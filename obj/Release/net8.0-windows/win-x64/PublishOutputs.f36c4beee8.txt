@@ -1,0 +1,2 @@
+C:\Users\Steven\Github\CatFoil\dist\KeyboardLocker.pdb
+C:\Users\Steven\Github\CatFoil\dist\KeyboardLocker.exe

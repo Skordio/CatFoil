@@ -1,0 +1,14 @@
+C:\Users\Steven\Github\CatFoil\bin\Debug\net8.0-windows\KeyboardLocker.exe
+C:\Users\Steven\Github\CatFoil\bin\Debug\net8.0-windows\KeyboardLocker.deps.json
+C:\Users\Steven\Github\CatFoil\bin\Debug\net8.0-windows\KeyboardLocker.runtimeconfig.json
+C:\Users\Steven\Github\CatFoil\bin\Debug\net8.0-windows\KeyboardLocker.dll
+C:\Users\Steven\Github\CatFoil\bin\Debug\net8.0-windows\KeyboardLocker.pdb
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.AssemblyInfoInputs.cache
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.AssemblyInfo.cs
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.csproj.CoreCompileInputs.cache
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.dll
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\refint\KeyboardLocker.dll
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.pdb
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\KeyboardLocker.genruntimeconfig.cache
+C:\Users\Steven\Github\CatFoil\obj\Debug\net8.0-windows\ref\KeyboardLocker.dll
