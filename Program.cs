@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace KeyboardLocker;
+namespace CatFoil;
 
 internal static class Program
 {
@@ -62,7 +62,7 @@ public sealed class MainForm : Form
         _proc = HookCallback;
 
         // --- Form ---
-        Text = "Keyboard Locker";
+        Text = "CatFoil";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimizeBox = true;
@@ -110,7 +110,7 @@ public sealed class MainForm : Form
         {
             MessageBox.Show(
                 "Failed to install the keyboard hook (error " + Marshal.GetLastWin32Error() + ").",
-                "Keyboard Locker", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                "CatFoil", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -188,7 +188,7 @@ public sealed class MainForm : Form
         ClientSize = UnlockedSize;
         CenterToScreen();
 
-        Text = "Keyboard Locker";
+        Text = "CatFoil";
         TopMost = false;
 
         _status.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
