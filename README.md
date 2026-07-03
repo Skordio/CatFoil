@@ -1,23 +1,31 @@
 # CatFoil 🐱🔒
 
-Foil your cat. CatFoil is a tiny Windows utility that locks your keyboard with one click — so a cat walking across your desk (or a toddler slapping the keys) can't type, trigger shortcuts, or close your windows. The mouse keeps working the whole time, so *you* can always click **Unlock Keyboard** to get control back.
+Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard with one click (or a hotkey) — so a cat walking across your desk (or a toddler slapping the keys) can't type, trigger shortcuts, or close your windows. The mouse keeps working the whole time, so *you* can always click your way back to control.
+
+## Features
+
+- **One-click lock** from the main window, the tray menu, or a global hotkey (default **Ctrl+Alt+L** — rebindable).
+- **Lives in the system tray** with a cat icon; closing the window hides it to the tray instead of exiting.
+- **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. It stays out of the way of fullscreen apps (videos, games) and reappears afterwards.
+- **Blocked-key feedback**: pressing a key while locked flashes the window/overlay red, and restores the window if you'd otherwise have no way back in.
+- **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay, hide-to-tray, start hidden, start with Windows (no installer needed — it's a registry Run entry).
+- **Portable**: a single EXE, nothing installed.
 
 ## How it works
 
-When you click **Lock Keyboard**, CatFoil installs a system-wide [low-level keyboard hook](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) (`SetWindowsHookEx` with `WH_KEYBOARD_LL`) and swallows every keystroke before it reaches any application. While locked:
-
-- The window grows, jumps to the center of the screen, and stays on top.
-- Every blocked keypress makes the window flash red twice, so you can see the lock is doing its job.
-- If the window was minimized, a blocked keypress restores it — the unlock button is never out of reach.
-- The mouse is untouched (no mouse hook is installed), so unlocking is always one click away.
-
-Closing the window removes the hook and returns the keyboard to normal.
+When locked, CatFoil installs a system-wide [low-level keyboard hook](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) (`SetWindowsHookEx` with `WH_KEYBOARD_LL`) and swallows every keystroke before it reaches any application — except the unlock hotkey, which is recognized inside the hook itself. No mouse hook is ever installed, so unlocking is always one click away.
 
 **Notes and limitations**
 
 - No administrator rights are required (the app manifest requests `asInvoker`).
 - Secure desktop keys like **Ctrl+Alt+Del** are handled by Windows before low-level hooks and cannot be blocked — that's by design, and it's also your emergency escape hatch.
-- Windows may silently remove a hook that takes too long to respond (see `LowLevelHooksTimeout`); if keys start leaking through, unlock and re-lock.
+- Windows may silently remove a hook that takes too long to respond; if keys start leaking through, unlock and re-lock.
+
+## License keys
+
+CatFoil is source-available and free to build yourself. The prebuilt EXE is free to use with one restriction: each lock session ends after **30 minutes** (with a countdown warning at 2 minutes remaining). A one-time license key — sold via Lemon Squeezy for about the price of a coffee — removes the limit. Enter the key under **Settings → License**; activation happens once online and works offline afterwards.
+
+There's no DRM beyond that. If you'd rather clone the repo and remove the check, you can — but if CatFoil saves your work from your cat, consider buying a license anyway. 🐾
 
 ## Requirements
 
@@ -49,10 +57,24 @@ dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 
 The output lands in `bin/Release/net8.0-windows/win-x64/publish/CatFoil.exe`.
 
+### Dev tips
+
+- Set the `CATFOIL_TRIAL_SECONDS` environment variable (e.g. `180`) before launching to shrink the 30-minute free session for testing the countdown/expiry flow.
+- The Lemon Squeezy product URL lives in `src/Licensing/LemonSqueezyProvider.cs` (`BuyUrl`) — it's a placeholder until the store product exists.
+
 ## Project layout
 
-| File | Purpose |
+| Path | Purpose |
 | --- | --- |
-| `Program.cs` | The entire app: entry point, main form, Win32 hook plumbing, and lock/unlock UI. |
+| `src/Program.cs` | Entry point; single-instance mutex (a second launch surfaces the first). |
+| `src/TrayAppContext.cs` | App shell: tray icon/menu, lock state, trial timer, wiring between everything. |
+| `src/KeyboardHook.cs` | The `WH_KEYBOARD_LL` hook; swallows keys while locked, detects the unlock combo. |
+| `src/HotkeyManager.cs` | `RegisterHotKey` wrapper for locking while the keyboard is live. |
+| `src/MainForm.cs` | The lock/unlock window (flash feedback, trial countdown, buy link). |
+| `src/OverlayForm.cs` | The draggable locked-state badge + fullscreen detection. |
+| `src/SettingsForm.cs` | Settings UI including license activation. |
+| `src/Settings.cs` | JSON settings in `%APPDATA%\CatFoil`. |
+| `src/Licensing/` | `ILicenseProvider` + Lemon Squeezy implementation (Store build can slot in later). |
+| `assets/cat.ico` | Placeholder cat icon (EXE, tray, overlay) — replace with real art anytime. |
 | `CatFoil.csproj` | SDK-style project file (WinForms, `net8.0-windows`, no external dependencies). |
-| `app.manifest` | Requests `asInvoker` (no UAC prompt) and PerMonitorV2 DPI awareness. |
+| `app.manifest` | Requests `asInvoker` (no UAC prompt). |

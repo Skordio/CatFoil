@@ -8,6 +8,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>CatFoil</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\cat.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Embedded so the tray/overlay get the multi-size icon even as a single portable EXE. -->
+    <EmbeddedResource Include="assets\cat.ico" />
+  </ItemGroup>
 
 </Project>
