@@ -241,6 +241,7 @@ public sealed class TrayAppContext : ApplicationContext
         {
             ApplyHotkeySettings();
             ApplyStartWithWindows();
+            _mainForm.RefreshHotkey();
             if (_hook.IsLocked)
                 _overlay.SetActive(_settings.ShowOverlay);
         };

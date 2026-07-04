@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace CatFoil;
@@ -12,6 +13,7 @@ public sealed class MainForm : Form
     private readonly Label _status = new();
     private readonly Button _toggle = new();
     private readonly Button _settingsButton = new();
+    private readonly HotkeyBadge _hotkeyBadge = new();
     private readonly ToolTip _tip = new();
     private readonly LinkLabel _buyLink = new();
     private bool _locked;
@@ -84,7 +86,13 @@ public sealed class MainForm : Form
         _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
         _tip.SetToolTip(_settingsButton, "Settings");
 
-        Controls.Add(_settingsButton);   // index 0 = topmost, so it sits above the docked label
+        // --- Hotkey badge (top-left): the combo drawn as keyboard keys ---
+        _hotkeyBadge.Location = new Point(12, 10);
+        _tip.SetToolTip(_hotkeyBadge, "Global hotkey — locks and unlocks the keyboard");
+        RefreshHotkey();
+
+        Controls.Add(_hotkeyBadge);      // low indexes = topmost, above the docked label
+        Controls.Add(_settingsButton);
         Controls.Add(_status);           // Fill gets the space left over by the docked controls
         Controls.Add(_buyLink);
         Controls.Add(_toggle);
@@ -151,6 +159,13 @@ public sealed class MainForm : Form
         _buyLink.Visible = true;
     }
 
+    /// <summary>Re-reads the hotkey from settings (call after settings change).</summary>
+    public void RefreshHotkey()
+    {
+        _hotkeyBadge.Visible = _settings.HotkeyEnabled;
+        _hotkeyBadge.SetCombo(_settings.Hotkey);
+    }
+
     public static void OpenBuyPage()
     {
         try
@@ -160,6 +175,94 @@ public sealed class MainForm : Form
         catch
         {
             // No browser available — nothing sensible to do.
+        }
+    }
+
+    /// <summary>
+    /// Draws a key combo as keycaps — rounded boxes with a 3D bottom lip,
+    /// joined by "+" — like the keys look on a physical keyboard.
+    /// </summary>
+    private sealed class HotkeyBadge : Control
+    {
+        private const int PadX = 9;    // horizontal padding inside a keycap
+        private const int Gap  = 5;    // space on each side of a "+"
+        private const int Lip  = 3;    // height of the keycap's bottom edge
+
+        private static readonly Font KeyFont = new("Segoe UI", 9.5f, FontStyle.Bold);
+
+        private string[] _parts = Array.Empty<string>();
+
+        public HotkeyBadge()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint
+                   | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            Height = 30;
+        }
+
+        public void SetCombo(Keys combo)
+        {
+            _parts = SettingsForm.HotkeyParts(combo);
+
+            int width = 0;
+            foreach (string part in _parts)
+                width += TextRenderer.MeasureText(part, KeyFont).Width + PadX * 2;
+            width += (_parts.Length - 1) * (TextRenderer.MeasureText("+", KeyFont).Width + Gap * 2);
+            Width = width;
+
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using var sideBrush   = new SolidBrush(Color.FromArgb(180, 180, 185));
+            using var faceBrush   = new SolidBrush(Color.White);
+            using var borderPen   = new Pen(Color.FromArgb(160, 160, 165));
+            int plusWidth = TextRenderer.MeasureText("+", KeyFont).Width;
+            int capHeight = Height - Lip;
+
+            int x = 0;
+            for (int i = 0; i < _parts.Length; i++)
+            {
+                int capWidth = TextRenderer.MeasureText(_parts[i], KeyFont).Width + PadX * 2;
+
+                // The "side" sticks out below the face, giving the 3D lip.
+                using (var side = RoundedRect(new Rectangle(x, Lip, capWidth - 1, capHeight - 1), 5))
+                    g.FillPath(sideBrush, side);
+                using (var face = RoundedRect(new Rectangle(x, 0, capWidth - 1, capHeight - 1), 5))
+                {
+                    g.FillPath(faceBrush, face);
+                    g.DrawPath(borderPen, face);
+                }
+
+                TextRenderer.DrawText(g, _parts[i], KeyFont,
+                    new Rectangle(x, 0, capWidth, capHeight), Color.FromArgb(70, 70, 70),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+                x += capWidth;
+                if (i < _parts.Length - 1)
+                {
+                    TextRenderer.DrawText(g, "+", KeyFont,
+                        new Rectangle(x + Gap, 0, plusWidth, capHeight), Color.FromArgb(140, 140, 140),
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    x += plusWidth + Gap * 2;
+                }
+            }
+        }
+
+        private static GraphicsPath RoundedRect(Rectangle bounds, int radius)
+        {
+            int d = radius * 2;
+            var path = new GraphicsPath();
+            path.AddArc(bounds.Left, bounds.Top, d, d, 180, 90);
+            path.AddArc(bounds.Right - d, bounds.Top, d, d, 270, 90);
+            path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+            path.AddArc(bounds.Left, bounds.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
         }
     }
 }

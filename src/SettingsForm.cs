@@ -134,15 +134,17 @@ public sealed class SettingsForm : Form
         _txtHotkey.Text = FormatHotkey(_hotkey);
     }
 
-    internal static string FormatHotkey(Keys combo)
+    internal static string[] HotkeyParts(Keys combo)
     {
         var parts = new List<string>();
         if (combo.HasFlag(Keys.Control)) parts.Add("Ctrl");
         if (combo.HasFlag(Keys.Alt)) parts.Add("Alt");
         if (combo.HasFlag(Keys.Shift)) parts.Add("Shift");
         parts.Add((combo & Keys.KeyCode).ToString());
-        return string.Join(" + ", parts);
+        return parts.ToArray();
     }
+
+    internal static string FormatHotkey(Keys combo) => string.Join(" + ", HotkeyParts(combo));
 
     private async void OnActivateClicked(object? sender, EventArgs e)
     {
