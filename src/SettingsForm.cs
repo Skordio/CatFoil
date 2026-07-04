@@ -52,11 +52,11 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 506);
+        ClientSize = new Size(512, 542);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
-        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 150) };
+        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 186) };
         AddCheck(grpGeneral, _chkTrayOnClose, "Hide to the tray when the window is closed", 26, settings.MinimizeToTrayOnClose);
         AddCheck(grpGeneral, _chkStartMinimized, "Start hidden in the system tray", 56, settings.StartMinimized);
         AddCheck(grpGeneral, _chkStartWithWindows, "Start CatFoil when Windows starts", 86, settings.StartWithWindows);
@@ -64,14 +64,14 @@ public sealed class SettingsForm : Form
         var btnOverlay = new Button
         {
             Text = "Customize overlay…",
-            Bounds = new Rectangle(346, 112, 128, 27),
+            Bounds = new Rectangle(34, 148, 200, 28),
             TabStop = false,
         };
         btnOverlay.Click += OnCustomizeOverlay;
         grpGeneral.Controls.Add(btnOverlay);
 
         // --- Hotkey ---
-        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 172, 488, 132) };
+        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 208, 488, 132) };
         AddCheck(grpHotkey, _chkHotkeyEnabled, "Lock/unlock the keyboard with a hotkey:", 26, settings.HotkeyEnabled);
         _txtHotkey.ReadOnly = true;
         _txtHotkey.Bounds = new Rectangle(16, 56, 170, 27);
@@ -103,7 +103,7 @@ public sealed class SettingsForm : Form
         // The status label wraps to 2 lines for longer messages, so it goes
         // LAST (at the bottom) where it can only grow into empty space — never
         // over the key box the way it did when it sat on top.
-        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 314, 488, 138) };
+        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 350, 488, 138) };
         _txtLicenseKey.Bounds = new Rectangle(16, 28, 268, 27);
         _txtLicenseKey.PlaceholderText = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
         _txtLicenseKey.Text = settings.LicenseKey ?? "";
@@ -121,7 +121,7 @@ public sealed class SettingsForm : Form
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 464, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 500, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -129,10 +129,10 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 464, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 500, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 464, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 500, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
