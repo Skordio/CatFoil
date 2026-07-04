@@ -38,6 +38,12 @@ public sealed class Settings
     public bool ShowOverlay { get; set; } = true;
     public bool WelcomeShown { get; set; }
     public Point? OverlayPosition { get; set; }
+
+    // Per-state overlay appearance. Defaults reproduce the original behavior:
+    // the cat badge shows normally and hides over fullscreen apps.
+    public OverlayStateSettings OverlayNormal { get; set; } = new();
+    public OverlayStateSettings OverlayFullscreen { get; set; } = new() { Visible = false };
+
     public string? LicenseKey { get; set; }
     public string? LicenseInstanceId { get; set; }
     public string? LicenseSignature { get; set; }
@@ -61,4 +67,32 @@ public sealed class Settings
         System.IO.Directory.CreateDirectory(Directory);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOptions));
     }
+}
+
+/// <summary>
+/// How the locked overlay looks in one system state (normal vs. a fullscreen
+/// app being foreground). A custom icon is a file kept inside
+/// <see cref="Settings.Directory"/> so it survives the original being moved.
+/// </summary>
+public sealed class OverlayStateSettings
+{
+    public const int MinSize = 32;
+    public const int MaxSize = 256;
+
+    public bool Visible { get; set; } = true;
+    public bool UseCustomIcon { get; set; }
+    public string? CustomIconFile { get; set; }
+    public int Size { get; set; } = 64;
+    public bool ShowBackground { get; set; } = true;
+
+    public int ClampedSize() => Math.Clamp(Size, MinSize, MaxSize);
+
+    public OverlayStateSettings Clone() => new()
+    {
+        Visible = Visible,
+        UseCustomIcon = UseCustomIcon,
+        CustomIconFile = CustomIconFile,
+        Size = Size,
+        ShowBackground = ShowBackground,
+    };
 }

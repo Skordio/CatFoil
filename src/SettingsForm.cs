@@ -61,6 +61,14 @@ public sealed class SettingsForm : Form
         AddCheck(grpGeneral, _chkStartMinimized, "Start hidden in the system tray", 56, settings.StartMinimized);
         AddCheck(grpGeneral, _chkStartWithWindows, "Start CatFoil when Windows starts", 86, settings.StartWithWindows);
         AddCheck(grpGeneral, _chkOverlay, "Show the cat overlay while the keyboard is locked", 116, settings.ShowOverlay);
+        var btnOverlay = new Button
+        {
+            Text = "Customize overlay…",
+            Bounds = new Rectangle(346, 112, 128, 27),
+            TabStop = false,
+        };
+        btnOverlay.Click += OnCustomizeOverlay;
+        grpGeneral.Controls.Add(btnOverlay);
 
         // --- Hotkey ---
         var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 172, 488, 132) };
@@ -271,6 +279,14 @@ public sealed class SettingsForm : Form
             _lblLicenseStatus.ForeColor = SystemColors.ControlText;
             _lblLicenseStatus.Text = "Free version — lock sessions end after 30 minutes.";
         }
+    }
+
+    private void OnCustomizeOverlay(object? sender, EventArgs e)
+    {
+        using var overlay = new OverlaySettingsForm(_settings, Icon ?? SystemIcons.Application);
+        // Re-raise so the tray applies the new overlay look to the live badge.
+        overlay.SettingsSaved += () => SettingsSaved?.Invoke();
+        overlay.ShowDialog(this);
     }
 
     private void OnSaveClicked(object? sender, EventArgs e)
