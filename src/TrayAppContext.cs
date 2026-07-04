@@ -176,9 +176,13 @@ public sealed class TrayAppContext : ApplicationContext
     // ---------------------------------------------------------------
     private static int TrialDurationSeconds()
     {
+        const int full = 30 * 60;
+
         // Dev override so the countdown can be tested without waiting 30 minutes.
+        // It can only SHORTEN the session — otherwise setting one env var would
+        // be a license bypass on release builds too.
         var env = Environment.GetEnvironmentVariable("CATFOIL_TRIAL_SECONDS");
-        return int.TryParse(env, out int s) && s > 0 ? s : 30 * 60;
+        return int.TryParse(env, out int s) && s > 0 ? Math.Min(s, full) : full;
     }
 
     private void TrialTick()

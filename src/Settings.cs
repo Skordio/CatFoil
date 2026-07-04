@@ -34,6 +34,7 @@ public sealed class Settings
     public Point? OverlayPosition { get; set; }
     public string? LicenseKey { get; set; }
     public string? LicenseInstanceId { get; set; }
+    public string? LicenseSignature { get; set; }
 
     public static Settings Load()
     {
