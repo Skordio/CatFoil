@@ -52,18 +52,18 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(440, 506);
+        ClientSize = new Size(512, 506);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
-        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 416, 150) };
+        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 150) };
         AddCheck(grpGeneral, _chkTrayOnClose, "Hide to the tray when the window is closed", 26, settings.MinimizeToTrayOnClose);
         AddCheck(grpGeneral, _chkStartMinimized, "Start hidden in the system tray", 56, settings.StartMinimized);
         AddCheck(grpGeneral, _chkStartWithWindows, "Start CatFoil when Windows starts", 86, settings.StartWithWindows);
         AddCheck(grpGeneral, _chkOverlay, "Show the cat overlay while the keyboard is locked", 116, settings.ShowOverlay);
 
         // --- Hotkey ---
-        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 172, 416, 132) };
+        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 172, 488, 132) };
         AddCheck(grpHotkey, _chkHotkeyEnabled, "Lock/unlock the keyboard with a hotkey:", 26, settings.HotkeyEnabled);
         _txtHotkey.ReadOnly = true;
         _txtHotkey.Bounds = new Rectangle(16, 56, 170, 27);
@@ -71,7 +71,7 @@ public sealed class SettingsForm : Form
         _txtHotkey.KeyUp += OnHotkeyKeyUp;
         var hint = new Label
         {
-            Text = "Click the box, then press a combination.",
+            Text = "Click the box, then press keys.",
             AutoSize = true,
             ForeColor = Color.Gray,
             Location = new Point(196, 60),
@@ -92,21 +92,24 @@ public sealed class SettingsForm : Form
         UpdateHotkeyDisplay();
 
         // --- License ---
-        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 314, 416, 138) };
-        _lblLicenseStatus.AutoSize = true;
-        _lblLicenseStatus.MaximumSize = new Size(384, 0);
-        _lblLicenseStatus.Location = new Point(16, 24);
-        _txtLicenseKey.Bounds = new Rectangle(16, 58, 268, 27);
+        // The status label wraps to 2 lines for longer messages, so it goes
+        // LAST (at the bottom) where it can only grow into empty space — never
+        // over the key box the way it did when it sat on top.
+        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 314, 488, 138) };
+        _txtLicenseKey.Bounds = new Rectangle(16, 28, 268, 27);
         _txtLicenseKey.PlaceholderText = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
         _txtLicenseKey.Text = settings.LicenseKey ?? "";
         _btnActivate.Text = "Activate";
-        _btnActivate.Bounds = new Rectangle(296, 57, 104, 29);
+        _btnActivate.Bounds = new Rectangle(296, 27, 104, 29);
         _btnActivate.Click += OnActivateClicked;
         _lnkBuy.AutoSize = true;
-        _lnkBuy.Location = new Point(16, 100);
+        _lnkBuy.Location = new Point(16, 64);
         _lnkBuy.Text = "Buy a license — removes the 30-minute session limit";
         _lnkBuy.LinkClicked += (_, _) => MainForm.OpenBuyPage();
-        grpLicense.Controls.AddRange(new Control[] { _lblLicenseStatus, _txtLicenseKey, _btnActivate, _lnkBuy });
+        _lblLicenseStatus.AutoSize = true;
+        _lblLicenseStatus.MaximumSize = new Size(456, 0);
+        _lblLicenseStatus.Location = new Point(16, 94);
+        grpLicense.Controls.AddRange(new Control[] { _txtLicenseKey, _btnActivate, _lnkBuy, _lblLicenseStatus });
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
@@ -118,10 +121,10 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(252, 464, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 464, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(343, 464, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 464, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
