@@ -31,7 +31,7 @@ public sealed class OverlaySettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(520, 588);
+        ClientSize = new Size(520, 602);
         Font = new Font("Segoe UI", 9.5f);
 
         var intro = new Label
@@ -45,13 +45,13 @@ public sealed class OverlaySettingsForm : Form
         };
 
         _normalEditor = new StateEditor("Normal (no fullscreen app)", _settings.OverlayNormal, _defaultIcon)
-        { Location = new Point(12, 78) };
+        { Location = new Point(12, 92) };
         _fullscreenEditor = new StateEditor("When a fullscreen app is running", _settings.OverlayFullscreen, _defaultIcon)
-        { Location = new Point(12, 310) };
+        { Location = new Point(12, 324) };
 
-        var btnOk = new Button { Text = "OK", Bounds = new Rectangle(332, 546, 85, 30) };
+        var btnOk = new Button { Text = "OK", Bounds = new Rectangle(332, 560, 85, 30) };
         btnOk.Click += OnOk;
-        var btnCancel = new Button { Text = "Cancel", Bounds = new Rectangle(423, 546, 85, 30) };
+        var btnCancel = new Button { Text = "Cancel", Bounds = new Rectangle(423, 560, 85, 30) };
         btnCancel.Click += (_, _) => Close();
         AcceptButton = btnOk;
         CancelButton = btnCancel;
