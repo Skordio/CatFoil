@@ -13,6 +13,7 @@ public sealed class MainForm : Form
     private readonly Label _status = new();
     private readonly Button _toggle = new();
     private readonly Button _settingsButton = new();
+    private readonly Button _exitButton = new();
     private readonly HotkeyBadge _hotkeyBadge = new();
     private readonly ToolTip _tip = new();
     private readonly LinkLabel _buyLink = new();
@@ -27,8 +28,11 @@ public sealed class MainForm : Form
     /// <summary>The lock/unlock button was clicked; TrayAppContext decides what to do.</summary>
     public event Action? ToggleRequested;
 
-    /// <summary>The settings cog was clicked; TrayAppContext opens the settings window.</summary>
+    /// <summary>The Settings button was clicked; TrayAppContext opens the settings window.</summary>
     public event Action? SettingsRequested;
+
+    /// <summary>The Exit button was clicked; TrayAppContext shuts the app down.</summary>
+    public event Action? ExitRequested;
 
     /// <summary>Set on real exit so closing stops hiding to the tray.</summary>
     public bool AllowClose { get; set; }
@@ -71,20 +75,23 @@ public sealed class MainForm : Form
         // Stop the button from grabbing keyboard focus / space-bar activation.
         _toggle.TabStop = false;
 
-        // --- Settings cog (floats in the top-right corner, above the status label) ---
-        _settingsButton.Text = "⚙";
-        _settingsButton.Font = new Font("Segoe UI", 14f);
-        _settingsButton.Size = new Size(36, 36);
-        _settingsButton.Location = new Point(UnlockedSize.Width - 44, 8);
-        _settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _settingsButton.FlatStyle = FlatStyle.Flat;
-        _settingsButton.FlatAppearance.BorderSize = 0;
-        _settingsButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(225, 225, 225);
-        _settingsButton.BackColor = Color.FromArgb(245, 245, 245);
-        _settingsButton.Cursor = Cursors.Hand;
+        // --- Exit + Settings buttons (bottom-left, above the lock button) ---
+        int cornerY = UnlockedSize.Height - _toggle.Height - 40 - 10;
+        _exitButton.Text = "Exit";
+        _exitButton.Size = new Size(104, 40);
+        _exitButton.Location = new Point(12, cornerY);
+        _exitButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        _exitButton.Font = new Font("Segoe UI", 10f);
+        _exitButton.TabStop = false;
+        _exitButton.Click += (_, _) => ExitRequested?.Invoke();
+
+        _settingsButton.Text = "Settings";
+        _settingsButton.Size = new Size(104, 40);
+        _settingsButton.Location = new Point(12 + 104 + 8, cornerY);
+        _settingsButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        _settingsButton.Font = new Font("Segoe UI", 10f);
         _settingsButton.TabStop = false;
         _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
-        _tip.SetToolTip(_settingsButton, "Settings");
 
         // --- Hotkey badge (top-left): the combo drawn as keyboard keys ---
         _hotkeyBadge.Location = new Point(12, 10);
@@ -92,6 +99,7 @@ public sealed class MainForm : Form
         RefreshHotkey();
 
         Controls.Add(_hotkeyBadge);      // low indexes = topmost, above the docked label
+        Controls.Add(_exitButton);
         Controls.Add(_settingsButton);
         Controls.Add(_status);           // Fill gets the space left over by the docked controls
         Controls.Add(_buyLink);
