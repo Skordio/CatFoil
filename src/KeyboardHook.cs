@@ -6,7 +6,8 @@ using System.Windows.Forms;
 namespace CatFoil;
 
 /// <summary>
-/// Global low-level keyboard hook. While locked it swallows every keystroke,
+/// Global low-level keyboard hook. While locked it swallows every key-down
+/// (key-ups pass through so Windows' modifier state never desyncs),
 /// except the configured unlock combo which raises <see cref="UnlockComboPressed"/>
 /// instead — RegisterHotKey never fires while we're swallowing keys, so the
 /// unlock path has to live inside the hook itself.
@@ -84,11 +85,16 @@ public sealed class KeyboardHook : IDisposable
                     UnlockComboPressed?.Invoke();
                 else
                     BlockedKeyPress?.Invoke();
+
+                // Returning 1 swallows the keystroke. The mouse is untouched
+                // because we never installed a mouse hook.
+                return (IntPtr)1;
             }
 
-            // Returning 1 swallows the keystroke. The mouse is untouched
-            // because we never installed a mouse hook.
-            return (IntPtr)1;
+            // Key-UPs pass through. Swallowing them desyncs Windows' key state:
+            // a modifier held while locking (e.g. the Ctrl+Alt of the hotkey)
+            // would never be seen released, leaving Ctrl/Alt/Shift "stuck down"
+            // after unlock. A lone key-up can't type or trigger shortcuts.
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
