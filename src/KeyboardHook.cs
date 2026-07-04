@@ -88,6 +88,26 @@ public sealed class KeyboardHook : IDisposable
     public void Lock() => IsLocked = true;
     public void Unlock() => IsLocked = false;
 
+    /// <summary>True while a hook handle is held (not a liveness guarantee).</summary>
+    public bool IsInstalled => _hookId != IntPtr.Zero;
+
+    /// <summary>
+    /// Tears down and re-adds the hook. Windows silently removes a low-level
+    /// hook whose callback overruns LowLevelHooksTimeout — which can happen on
+    /// the first keypress after the process idles and its pages are trimmed —
+    /// and leaves us no signal: our stored handle stays non-null but dead.
+    /// A caller can re-arm periodically so the hook survives long idle periods.
+    /// </summary>
+    public bool Reinstall(out int win32Error)
+    {
+        if (_hookId != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hookId);
+            _hookId = IntPtr.Zero;
+        }
+        return Install(out win32Error);
+    }
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
