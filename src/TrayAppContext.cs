@@ -45,6 +45,7 @@ public sealed class TrayAppContext : ApplicationContext
         _mainForm = new MainForm(_settings) { Icon = _appIcon };
         _ = _mainForm.Handle;   // create the handle now so BeginInvoke works before the first Show
         _mainForm.ToggleRequested += ToggleLock;
+        _mainForm.SettingsRequested += ShowSettings;
 
         _overlay = new OverlayForm(_appIcon);
         _overlay.ApplySavedPosition(_settings.OverlayPosition);
@@ -93,6 +94,14 @@ public sealed class TrayAppContext : ApplicationContext
 
         if (!_settings.StartMinimized)
             ShowMainWindow();
+
+        if (!_settings.WelcomeShown)
+        {
+            ShowMainWindow();
+            // Defer until the message loop is running so the dialog centers
+            // on an already-visible main window.
+            _mainForm.BeginInvoke(ShowWelcome);
+        }
 
         // A second launched instance sets this event to say "show yourself".
         _showWait = ThreadPool.RegisterWaitForSingleObject(
@@ -159,7 +168,6 @@ public sealed class TrayAppContext : ApplicationContext
         if ((!_mainForm.Visible && !_overlay.Visible) || _mainForm.WindowState == FormWindowState.Minimized)
             ShowMainWindow();
 
-        _mainForm.FlashBlockedKey();
         _overlay.FlashBlockedKey();
     }
 
@@ -205,6 +213,15 @@ public sealed class TrayAppContext : ApplicationContext
             _mainForm.WindowState = FormWindowState.Normal;
         _mainForm.BringToFront();
         _mainForm.Activate();
+    }
+
+    private void ShowWelcome()
+    {
+        using (var welcome = new WelcomeForm(_settings))
+            welcome.ShowDialog(_mainForm);
+
+        _settings.WelcomeShown = true;
+        _settings.Save();
     }
 
     private void ShowSettings()

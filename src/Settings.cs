@@ -30,6 +30,7 @@ public sealed class Settings
     public bool StartWithWindows { get; set; }
     public bool StartMinimized { get; set; }
     public bool ShowOverlay { get; set; } = true;
+    public bool WelcomeShown { get; set; }
     public Point? OverlayPosition { get; set; }
     public string? LicenseKey { get; set; }
     public string? LicenseInstanceId { get; set; }

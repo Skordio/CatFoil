@@ -11,19 +11,22 @@ public sealed class MainForm : Form
 
     private readonly Label _status = new();
     private readonly Button _toggle = new();
+    private readonly Button _settingsButton = new();
+    private readonly ToolTip _tip = new();
     private readonly LinkLabel _buyLink = new();
-    private readonly System.Windows.Forms.Timer _flash = new();
-    private bool _flashOn;
-    private int _flashTicks;   // remaining on/off transitions in the current burst
     private bool _locked;
 
     private static readonly Size UnlockedSize = new(420, 260);
     private static readonly Size LockedSize   = new(760, 480);
 
-    private const string LockedText = "⚠  KEYBOARD LOCKED  ⚠\n\nClick below to unlock";
+    private const string LockedText =
+        "The keyboard is currently locked and will not accept input\nexcept Ctrl + Alt + Delete";
 
     /// <summary>The lock/unlock button was clicked; TrayAppContext decides what to do.</summary>
     public event Action? ToggleRequested;
+
+    /// <summary>The settings cog was clicked; TrayAppContext opens the settings window.</summary>
+    public event Action? SettingsRequested;
 
     /// <summary>Set on real exit so closing stops hiding to the tray.</summary>
     public bool AllowClose { get; set; }
@@ -66,13 +69,25 @@ public sealed class MainForm : Form
         // Stop the button from grabbing keyboard focus / space-bar activation.
         _toggle.TabStop = false;
 
-        Controls.Add(_status);      // added first so DockStyle.Fill gets the remaining space
+        // --- Settings cog (floats in the top-right corner, above the status label) ---
+        _settingsButton.Text = "⚙";
+        _settingsButton.Font = new Font("Segoe UI", 14f);
+        _settingsButton.Size = new Size(36, 36);
+        _settingsButton.Location = new Point(UnlockedSize.Width - 44, 8);
+        _settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _settingsButton.FlatStyle = FlatStyle.Flat;
+        _settingsButton.FlatAppearance.BorderSize = 0;
+        _settingsButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(225, 225, 225);
+        _settingsButton.BackColor = Color.FromArgb(245, 245, 245);
+        _settingsButton.Cursor = Cursors.Hand;
+        _settingsButton.TabStop = false;
+        _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
+        _tip.SetToolTip(_settingsButton, "Settings");
+
+        Controls.Add(_settingsButton);   // index 0 = topmost, so it sits above the docked label
+        Controls.Add(_status);           // Fill gets the space left over by the docked controls
         Controls.Add(_buyLink);
         Controls.Add(_toggle);
-
-        // --- Flash timer: a short 2-blink reaction to a blocked key ---
-        _flash.Interval = 120;
-        _flash.Tick += (_, _) => FlashTick();
 
         FormClosing += OnFormClosing;
     }
@@ -95,22 +110,18 @@ public sealed class MainForm : Form
             ClientSize = LockedSize;
             CenterToScreen();
 
-            Text = "🔒 KEYBOARD LOCKED";
+            Text = "CatFoil — keyboard locked";
             TopMost = true;
 
-            _status.Font = new Font("Segoe UI", 30f, FontStyle.Bold);
+            _status.Font = new Font("Segoe UI", 18f, FontStyle.Regular);
+            _status.ForeColor = Color.FromArgb(60, 60, 60);
             _status.Text = LockedText;
             _toggle.Text = "Unlock Keyboard";
             _buyLink.Visible = false;
             ResumeLayout();
-
-            ApplyLockedStatic();
         }
         else
         {
-            _flash.Stop();
-            _flashTicks = 0;
-
             SuspendLayout();
             BackColor = Color.FromArgb(245, 245, 245);
             ClientSize = UnlockedSize;
@@ -140,46 +151,6 @@ public sealed class MainForm : Form
         _status.ForeColor = Color.FromArgb(180, 0, 0);
         _status.Text = "Free session limit reached — the keyboard has been unlocked.\n\nBuy a license for unlimited lock time.";
         _buyLink.Visible = true;
-    }
-
-    public void FlashBlockedKey()
-    {
-        if (!_locked || !Visible) return;
-
-        // Don't stack bursts: only start a fresh 2-blink once the last finished.
-        if (!_flash.Enabled)
-        {
-            // 2 flashes = ON, OFF, ON, OFF  (ends back on the static locked look)
-            _flashTicks = 4;
-            _flashOn = false;   // first tick flips this to ON
-            _flash.Start();
-        }
-    }
-
-    private void FlashTick()
-    {
-        _flashOn = !_flashOn;
-        if (_flashOn)
-        {
-            BackColor = Color.FromArgb(180, 0, 0);
-            _status.ForeColor = Color.White;
-        }
-        else
-        {
-            ApplyLockedStatic();
-        }
-
-        if (--_flashTicks <= 0)
-        {
-            _flash.Stop();
-            ApplyLockedStatic();   // settle on the static locked look
-        }
-    }
-
-    private void ApplyLockedStatic()
-    {
-        BackColor = Color.FromArgb(255, 235, 235);
-        _status.ForeColor = Color.FromArgb(180, 0, 0);
     }
 
     public static void OpenBuyPage()
