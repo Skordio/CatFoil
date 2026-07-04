@@ -16,11 +16,9 @@ public sealed class KeyboardHook : IDisposable
 {
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN     = 0x0100;
+    private const int WM_KEYUP       = 0x0101;
     private const int WM_SYSKEYDOWN  = 0x0104;
-
-    private const int VK_SHIFT   = 0x10;
-    private const int VK_CONTROL = 0x11;
-    private const int VK_MENU    = 0x12;
+    private const int WM_SYSKEYUP    = 0x0105;
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -37,13 +35,15 @@ public sealed class KeyboardHook : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr GetModuleHandle(string lpModuleName);
 
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
-
     // Keep a strong reference to the delegate so the GC never collects it
     // while the hook is still installed (a classic crash-causing bug).
     private readonly LowLevelKeyboardProc _proc;
     private IntPtr _hookId = IntPtr.Zero;
+
+    // Modifier state tracked from the raw events the hook sees. We can't ask
+    // Windows (GetAsyncKeyState): swallowed key-downs never reach the OS key
+    // state tables, so while locked it reports held modifiers as "up".
+    private bool _lCtrl, _rCtrl, _lAlt, _rAlt, _lShift, _rShift;
 
     public bool IsLocked { get; private set; }
 
@@ -74,13 +74,20 @@ public sealed class KeyboardHook : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && IsLocked)
+        if (nCode >= 0)
         {
             int msg = wParam.ToInt32();
-            if (msg is WM_KEYDOWN or WM_SYSKEYDOWN)
+            bool isDown = msg is WM_KEYDOWN or WM_SYSKEYDOWN;
+            bool isUp   = msg is WM_KEYUP or WM_SYSKEYUP;
+
+            // KBDLLHOOKSTRUCT.vkCode is the first DWORD.
+            var vk = (Keys)Marshal.ReadInt32(lParam);
+
+            if (isDown || isUp)
+                TrackModifier(vk, isDown);
+
+            if (IsLocked && isDown)
             {
-                // KBDLLHOOKSTRUCT.vkCode is the first DWORD.
-                var vk = (Keys)Marshal.ReadInt32(lParam);
                 if (MatchesUnlockCombo(vk))
                     UnlockComboPressed?.Invoke();
                 else
@@ -91,30 +98,43 @@ public sealed class KeyboardHook : IDisposable
                 return (IntPtr)1;
             }
 
-            // Key-UPs pass through. Swallowing them desyncs Windows' key state:
-            // a modifier held while locking (e.g. the Ctrl+Alt of the hotkey)
-            // would never be seen released, leaving Ctrl/Alt/Shift "stuck down"
-            // after unlock. A lone key-up can't type or trigger shortcuts.
+            // Key-UPs pass through even while locked. Swallowing them desyncs
+            // Windows' key state: a modifier held while locking (e.g. the
+            // Ctrl+Alt of the hotkey) would never be seen released, leaving
+            // Ctrl/Alt/Shift "stuck down" after unlock. A lone key-up can't
+            // type or trigger shortcuts.
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    private void TrackModifier(Keys vk, bool down)
+    {
+        switch (vk)
+        {
+            case Keys.LControlKey: _lCtrl  = down; break;
+            case Keys.RControlKey: _rCtrl  = down; break;
+            case Keys.LMenu:       _lAlt   = down; break;
+            case Keys.RMenu:       _rAlt   = down; break;
+            case Keys.LShiftKey:   _lShift = down; break;
+            case Keys.RShiftKey:   _rShift = down; break;
+        }
     }
 
     private bool MatchesUnlockCombo(Keys vk)
     {
         Keys combo = UnlockCombo;
         if (combo == Keys.None || (combo & Keys.KeyCode) != vk) return false;
-        return ModifierMatches(combo, Keys.Control, VK_CONTROL)
-            && ModifierMatches(combo, Keys.Alt, VK_MENU)
-            && ModifierMatches(combo, Keys.Shift, VK_SHIFT);
+        return ModifierMatches(combo, Keys.Control, _lCtrl  || _rCtrl)
+            && ModifierMatches(combo, Keys.Alt,     _lAlt   || _rAlt)
+            && ModifierMatches(combo, Keys.Shift,   _lShift || _rShift);
     }
 
     // Required modifiers must be down, non-required ones up, so e.g.
     // Ctrl+Shift+Alt+L doesn't trigger a Ctrl+Alt+L combo.
-    private static bool ModifierMatches(Keys combo, Keys flag, int vk)
+    private static bool ModifierMatches(Keys combo, Keys flag, bool down)
     {
         bool required = (combo & flag) != 0;
-        bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
         return required == down;
     }
 
