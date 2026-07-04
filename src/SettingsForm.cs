@@ -24,6 +24,7 @@ public sealed class SettingsForm : Form
     private readonly Label _lblLicenseStatus = new();
     private readonly LinkLabel _lnkBuy = new();
     private readonly Button _btnSave = new();
+    private readonly Button _btnApply = new();
     private readonly Button _btnCancel = new();
     private readonly Button _btnWelcome = new();
 
@@ -128,6 +129,9 @@ public sealed class SettingsForm : Form
             using var welcome = new WelcomeForm(_settings);
             welcome.ShowDialog(this);
         };
+        _btnApply.Text = "Apply";
+        _btnApply.Bounds = new Rectangle(233, 500, 85, 30);
+        _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
         _btnSave.Bounds = new Rectangle(324, 500, 85, 30);
         _btnSave.Click += OnSaveClicked;
@@ -137,7 +141,7 @@ public sealed class SettingsForm : Form
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
 
-        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, _btnWelcome, _btnSave, _btnCancel });
+        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, _btnWelcome, _btnApply, _btnSave, _btnCancel });
         RefreshLicenseStatus(null);
     }
 
@@ -291,6 +295,14 @@ public sealed class SettingsForm : Form
 
     private void OnSaveClicked(object? sender, EventArgs e)
     {
+        PersistSettings();
+        Close();
+    }
+
+    // Write the controls into settings and apply them live. Used by both Save
+    // (which then closes) and Apply (which leaves the window open).
+    private void PersistSettings()
+    {
         _settings.MinimizeToTrayOnClose = _chkTrayOnClose.Checked;
         _settings.StartMinimized = _chkStartMinimized.Checked;
         _settings.StartWithWindows = _chkStartWithWindows.Checked;
@@ -303,6 +315,5 @@ public sealed class SettingsForm : Form
         _settings.Save();
 
         SettingsSaved?.Invoke();
-        Close();
     }
 }
