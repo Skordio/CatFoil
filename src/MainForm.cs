@@ -75,26 +75,26 @@ public sealed class MainForm : Form
         // Stop the button from grabbing keyboard focus / space-bar activation.
         _toggle.TabStop = false;
 
-        // --- Exit + Settings buttons (bottom-left, above the lock button) ---
-        int cornerY = UnlockedSize.Height - _toggle.Height - 40 - 10;
+        // --- Exit + Settings buttons (top-left) ---
         _exitButton.Text = "Exit";
         _exitButton.Size = new Size(104, 40);
-        _exitButton.Location = new Point(12, cornerY);
-        _exitButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        _exitButton.Location = new Point(12, 10);
         _exitButton.Font = new Font("Segoe UI", 10f);
+        _exitButton.BackColor = Color.FromArgb(250, 228, 226);   // soft red tint
+        _exitButton.ForeColor = Color.FromArgb(140, 35, 35);
         _exitButton.TabStop = false;
         _exitButton.Click += (_, _) => ExitRequested?.Invoke();
 
         _settingsButton.Text = "Settings";
         _settingsButton.Size = new Size(104, 40);
-        _settingsButton.Location = new Point(12 + 104 + 8, cornerY);
-        _settingsButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+        _settingsButton.Location = new Point(12 + 104 + 8, 10);
         _settingsButton.Font = new Font("Segoe UI", 10f);
         _settingsButton.TabStop = false;
         _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
 
-        // --- Hotkey badge (top-left): the combo drawn as keyboard keys ---
-        _hotkeyBadge.Location = new Point(12, 10);
+        // --- Hotkey badge (bottom-left, right above the lock button) ---
+        _hotkeyBadge.Location = new Point(12, UnlockedSize.Height - _toggle.Height - _hotkeyBadge.Height - 10);
+        _hotkeyBadge.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         _tip.SetToolTip(_hotkeyBadge, "Global hotkey — locks and unlocks the keyboard");
         RefreshHotkey();
 
