@@ -75,6 +75,13 @@ public sealed class WelcomeForm : Form
 
         Controls.Add(flow);     // added first so DockStyle.Fill gets the remaining space
         Controls.Add(ok);
+
+        // Size the window to the content: the text length varies (the hotkey
+        // string is user-configurable), so a hard-coded height can clip it.
+        int contentHeight = flow.GetPreferredSize(new Size(ClientSize.Width, 0)).Height;
+        int maxHeight = (Screen.PrimaryScreen?.WorkingArea.Height ?? 900) - 80;
+        ClientSize = new Size(ClientSize.Width,
+            Math.Min(contentHeight + 8 + ok.Height, maxHeight));   // AutoScroll kicks in if capped
     }
 
     private static void AddTitle(FlowLayoutPanel flow, string text) =>
