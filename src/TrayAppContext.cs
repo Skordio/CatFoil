@@ -27,6 +27,10 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _lockMenuItem;
     private readonly System.Windows.Forms.Timer _trialTimer = new() { Interval = 1000 };
+    // Periodically re-arms the hotkey and hook: Windows quietly drops both after
+    // long idle / sleep, and otherwise nothing restores them until the user
+    // reopens a window. 60s keeps the vulnerable gap short without churn.
+    private readonly System.Windows.Forms.Timer _inputWatchdog = new() { Interval = 60_000 };
     private readonly Icon _appIcon;
 
     private SettingsForm? _settingsForm;
@@ -73,6 +77,12 @@ public sealed class TrayAppContext : ApplicationContext
         ApplyStartWithWindows();
 
         _trialTimer.Tick += (_, _) => TrialTick();
+
+        // Keep global input alive across long idle and sleep (see ReassertInput).
+        _inputWatchdog.Tick += (_, _) => ReassertInput();
+        _inputWatchdog.Start();
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        SystemEvents.SessionSwitch += OnSessionSwitch;
 
         _lockMenuItem = new ToolStripMenuItem("Lock Keyboard", null, (_, _) => ToggleLock());
         var openItem = new ToolStripMenuItem("Open CatFoil", null, (_, _) => ShowMainWindow());
@@ -250,7 +260,7 @@ public sealed class TrayAppContext : ApplicationContext
         _settingsForm.Show();
     }
 
-    private void ApplyHotkeySettings()
+    private void ApplyHotkeySettings(bool announceFailure = true)
     {
         // Chord mode: our hook detects the combo in both lock states and
         // RegisterHotKey is retired (it can't express multi-key chords).
@@ -267,7 +277,7 @@ public sealed class TrayAppContext : ApplicationContext
         _hook.UnlockCombo = _settings.HotkeyEnabled ? _settings.Hotkey : Keys.None;
         if (_settings.HotkeyEnabled)
         {
-            if (!_hotkey.Register(_settings.Hotkey))
+            if (!_hotkey.Register(_settings.Hotkey) && announceFailure)
             {
                 _tray?.ShowBalloonTip(3000, "CatFoil",
                     "Could not register the hotkey " + SettingsForm.FormatHotkey(_settings.Hotkey) +
@@ -278,6 +288,43 @@ public sealed class TrayAppContext : ApplicationContext
         {
             _hotkey.Unregister();
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Keep global input alive across idle / sleep
+    // ---------------------------------------------------------------
+
+    /// <summary>
+    /// Re-arms the hotkey and (while unlocked) the keyboard hook. Windows quietly
+    /// drops both after long idle or a sleep/resume: a low-level hook that missed
+    /// LowLevelHooksTimeout is removed with no signal to us, and RegisterHotKey
+    /// bindings can be lost across power transitions. Called on a watchdog timer
+    /// and on power-resume / session-unlock so the hotkey keeps working without
+    /// the user having to reopen a window.
+    /// </summary>
+    private void ReassertInput()
+    {
+        // Only re-add the hook while unlocked: locked, it's firing on every key
+        // (so it's warm, not idle-dead), and reinstalling would open a brief gap
+        // where a keystroke could leak past the lock.
+        if (!_hook.IsLocked)
+            _hook.Reinstall(out _);
+
+        // Re-register quietly — a genuine conflict was already reported at startup,
+        // and we don't want a balloon every 60 seconds.
+        ApplyHotkeySettings(announceFailure: false);
+    }
+
+    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume)
+            _mainForm.BeginInvoke(ReassertInput);
+    }
+
+    private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason is SessionSwitchReason.SessionUnlock or SessionSwitchReason.ConsoleConnect)
+            _mainForm.BeginInvoke(ReassertInput);
     }
 
     private void ApplyStartWithWindows()
@@ -302,6 +349,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void ExitApp()
     {
         if (_hook.IsLocked) SetLocked(false);
+        DetachInputWatchdog();
         _showWait?.Unregister(null);
         _showWait = null;
         _tray.Visible = false;
@@ -313,10 +361,21 @@ public sealed class TrayAppContext : ApplicationContext
         ExitThread();
     }
 
+    // SystemEvents keeps a strong reference to its handlers, so leaving them
+    // subscribed would keep this context alive; always detach on teardown.
+    private void DetachInputWatchdog()
+    {
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
+        _inputWatchdog.Stop();
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            DetachInputWatchdog();
+            _inputWatchdog.Dispose();
             _showWait?.Unregister(null);
             _tray?.Dispose();
             _hotkey.Dispose();
