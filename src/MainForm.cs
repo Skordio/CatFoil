@@ -111,7 +111,6 @@ public sealed class MainForm : Form
             CenterToScreen();
 
             Text = "CatFoil — keyboard locked";
-            TopMost = true;
 
             _status.Font = new Font("Segoe UI", 18f, FontStyle.Regular);
             _status.ForeColor = Color.FromArgb(60, 60, 60);
@@ -128,7 +127,6 @@ public sealed class MainForm : Form
             CenterToScreen();
 
             Text = "CatFoil";
-            TopMost = false;
 
             _status.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
             _status.ForeColor = Color.FromArgb(0, 130, 0);
