@@ -24,7 +24,7 @@ public sealed class Settings
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public Keys Hotkey { get; set; } = Keys.Control | Keys.Alt | Keys.L;
+    public Keys Hotkey { get; set; } = Keys.Alt | Keys.G;
     public bool HotkeyEnabled { get; set; } = true;
 
     // Chord mode: modifiers + several keys held together (e.g. Alt+C+F),
