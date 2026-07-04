@@ -50,10 +50,26 @@ public sealed class KeyboardHook : IDisposable
     /// <summary>Combo that unlocks while locked. Keys.None disables it.</summary>
     public Keys UnlockCombo { get; set; } = Keys.None;
 
+    /// <summary>Modifiers required by the chord (used with SetChordKeys).</summary>
+    public Keys ChordModifiers { get; set; }
+
+    // Chord mode: several normal keys held together. Detected in BOTH lock
+    // states, since RegisterHotKey can't express multi-key chords.
+    private Keys[] _chordKeys = Array.Empty<Keys>();
+    private bool[] _chordDown = Array.Empty<bool>();
+
+    /// <summary>Non-modifier keys of the chord. Empty disables chord mode.</summary>
+    public void SetChordKeys(Keys[] keys)
+    {
+        _chordKeys = keys;
+        _chordDown = new bool[keys.Length];
+    }
+
     // Raised from the hook callback (UI thread, but mid-hook) — handlers must
     // defer real work with BeginInvoke so the hook returns fast.
     public event Action? BlockedKeyPress;
     public event Action? UnlockComboPressed;
+    public event Action? ChordPressed;
 
     public KeyboardHook()
     {
@@ -85,6 +101,14 @@ public sealed class KeyboardHook : IDisposable
 
             if (isDown || isUp)
                 TrackModifier(vk, isDown);
+
+            if (isDown && CompletesChord(vk))
+            {
+                ChordPressed?.Invoke();
+                return (IntPtr)1;   // swallow the keystroke that completed the chord
+            }
+            if (isUp)
+                ReleaseChordKey(vk);
 
             if (IsLocked && isDown)
             {
@@ -119,6 +143,31 @@ public sealed class KeyboardHook : IDisposable
             case Keys.LShiftKey:   _lShift = down; break;
             case Keys.RShiftKey:   _rShift = down; break;
         }
+    }
+
+    // A chord fires exactly once: on the key-down that completes it while the
+    // required modifiers (and no others) are held. Key-repeats don't re-fire.
+    private bool CompletesChord(Keys vk)
+    {
+        int idx = Array.IndexOf(_chordKeys, vk);
+        if (idx < 0) return false;
+
+        bool wasDown = _chordDown[idx];
+        _chordDown[idx] = true;
+        if (wasDown) return false;   // key-repeat of an already-held key
+
+        foreach (bool down in _chordDown)
+            if (!down) return false;
+
+        return ModifierMatches(ChordModifiers, Keys.Control, _lCtrl  || _rCtrl)
+            && ModifierMatches(ChordModifiers, Keys.Alt,     _lAlt   || _rAlt)
+            && ModifierMatches(ChordModifiers, Keys.Shift,   _lShift || _rShift);
+    }
+
+    private void ReleaseChordKey(Keys vk)
+    {
+        int idx = Array.IndexOf(_chordKeys, vk);
+        if (idx >= 0) _chordDown[idx] = false;
     }
 
     private bool MatchesUnlockCombo(Keys vk)

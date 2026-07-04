@@ -16,7 +16,9 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _chkStartWithWindows = new();
     private readonly CheckBox _chkOverlay = new();
     private readonly CheckBox _chkHotkeyEnabled = new();
+    private readonly CheckBox _chkChord = new();
     private readonly TextBox _txtHotkey = new();
+    private readonly ToolTip _tip = new() { AutoPopDelay = 20000 };
     private readonly TextBox _txtLicenseKey = new();
     private readonly Button _btnActivate = new();
     private readonly Label _lblLicenseStatus = new();
@@ -27,6 +29,13 @@ public sealed class SettingsForm : Form
 
     private Keys _hotkey;
 
+    // Chord being edited, plus live capture state for the hotkey box.
+    private Keys _chordModifiers;
+    private Keys[] _chordKeys;
+    private Keys _chordCaptureMods;
+    private readonly List<Keys> _chordCapture = new();
+    private readonly HashSet<Keys> _chordHeld = new();
+
     public event Action? SettingsSaved;
 
     public SettingsForm(Settings settings, ILicenseProvider license)
@@ -34,6 +43,8 @@ public sealed class SettingsForm : Form
         _settings = settings;
         _license = license;
         _hotkey = settings.Hotkey;
+        _chordModifiers = settings.ChordModifiers;
+        _chordKeys = settings.ChordKeys;
 
         Text = "CatFoil Settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -41,7 +52,7 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(440, 472);
+        ClientSize = new Size(440, 506);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
@@ -52,12 +63,12 @@ public sealed class SettingsForm : Form
         AddCheck(grpGeneral, _chkOverlay, "Show the cat overlay while the keyboard is locked", 116, settings.ShowOverlay);
 
         // --- Hotkey ---
-        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 172, 416, 98) };
+        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 172, 416, 132) };
         AddCheck(grpHotkey, _chkHotkeyEnabled, "Lock/unlock the keyboard with a hotkey:", 26, settings.HotkeyEnabled);
         _txtHotkey.ReadOnly = true;
         _txtHotkey.Bounds = new Rectangle(16, 56, 170, 27);
-        _txtHotkey.Text = FormatHotkey(_hotkey);
         _txtHotkey.KeyDown += OnHotkeyKeyDown;
+        _txtHotkey.KeyUp += OnHotkeyKeyUp;
         var hint = new Label
         {
             Text = "Click the box, then press a combination.",
@@ -67,9 +78,21 @@ public sealed class SettingsForm : Form
         };
         grpHotkey.Controls.Add(_txtHotkey);
         grpHotkey.Controls.Add(hint);
+        AddCheck(grpHotkey, _chkChord, "Multi-key chord (e.g. Alt + C + F)", 96, settings.UseChordHotkey);
+        _tip.SetToolTip(_chkChord,
+            "Lets the hotkey be modifiers plus two or three keys held together,\n" +
+            "detected by CatFoil itself instead of Windows.\n\n" +
+            "Example: with the chord Alt + C + F, hold down Alt, keep holding it\n" +
+            "while you press C, and then press F. The moment all three are down\n" +
+            "together, the keyboard locks — the same chord unlocks it again.\n\n" +
+            "Trade-off: while the keyboard is unlocked, the first keys of the\n" +
+            "chord still reach the app you're in — so the Alt + C part may\n" +
+            "briefly open a menu in some programs before the F lands.");
+        _chkChord.CheckedChanged += (_, _) => UpdateHotkeyDisplay();
+        UpdateHotkeyDisplay();
 
         // --- License ---
-        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 280, 416, 138) };
+        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 314, 416, 138) };
         _lblLicenseStatus.AutoSize = true;
         _lblLicenseStatus.MaximumSize = new Size(384, 0);
         _lblLicenseStatus.Location = new Point(16, 24);
@@ -87,7 +110,7 @@ public sealed class SettingsForm : Form
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 430, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 464, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -95,10 +118,10 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(252, 430, 85, 30);
+        _btnSave.Bounds = new Rectangle(252, 464, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(343, 430, 85, 30);
+        _btnCancel.Bounds = new Rectangle(343, 464, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
@@ -116,13 +139,22 @@ public sealed class SettingsForm : Form
         parent.Controls.Add(check);
     }
 
+    private static bool IsModifierKey(Keys key) =>
+        key is Keys.ControlKey or Keys.Menu or Keys.ShiftKey or Keys.LWin or Keys.RWin or Keys.None;
+
     private void OnHotkeyKeyDown(object? sender, KeyEventArgs e)
     {
         e.Handled = true;
         e.SuppressKeyPress = true;
 
+        if (_chkChord.Checked)
+        {
+            ChordKeyDown(e);
+            return;
+        }
+
         Keys key = e.KeyCode;
-        if (key is Keys.ControlKey or Keys.Menu or Keys.ShiftKey or Keys.LWin or Keys.RWin or Keys.None)
+        if (IsModifierKey(key))
             return;   // a modifier alone isn't a hotkey yet
         if (e.Modifiers == Keys.None)
         {
@@ -134,15 +166,74 @@ public sealed class SettingsForm : Form
         _txtHotkey.Text = FormatHotkey(_hotkey);
     }
 
-    internal static string[] HotkeyParts(Keys combo)
+    private void ChordKeyDown(KeyEventArgs e)
+    {
+        Keys key = e.KeyCode;
+        if (IsModifierKey(key))
+        {
+            if (_chordHeld.Count == 0)
+                _txtHotkey.Text = "Now hold 2–3 more keys…";
+            return;
+        }
+
+        // A fresh chord starts when nothing was held.
+        if (_chordHeld.Count == 0)
+        {
+            _chordCapture.Clear();
+            _chordCaptureMods = Keys.None;
+        }
+
+        if (_chordHeld.Add(key) && _chordCapture.Count < 3 && !_chordCapture.Contains(key))
+            _chordCapture.Add(key);
+        _chordCaptureMods |= e.Modifiers;
+
+        _txtHotkey.Text = string.Join(" + ", ChordParts(_chordCaptureMods, _chordCapture.ToArray()));
+    }
+
+    private void OnHotkeyKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (!_chkChord.Checked) return;
+
+        _chordHeld.Remove(e.KeyCode);
+        if (_chordHeld.Count > 0 || _chordCapture.Count == 0) return;
+
+        // Everything released — keep the chord if valid, otherwise explain.
+        if (_chordCaptureMods != Keys.None && _chordCapture.Count >= 2)
+        {
+            _chordModifiers = _chordCaptureMods;
+            _chordKeys = _chordCapture.ToArray();
+            UpdateHotkeyDisplay();
+        }
+        else
+        {
+            _txtHotkey.Text = "Hold a modifier + 2–3 keys together…";
+        }
+        _chordCapture.Clear();
+    }
+
+    private void UpdateHotkeyDisplay() =>
+        _txtHotkey.Text = _chkChord.Checked
+            ? string.Join(" + ", ChordParts(_chordModifiers, _chordKeys))
+            : FormatHotkey(_hotkey);
+
+    internal static string[] ChordParts(Keys modifiers, Keys[] keys)
     {
         var parts = new List<string>();
-        if (combo.HasFlag(Keys.Control)) parts.Add("Ctrl");
-        if (combo.HasFlag(Keys.Alt)) parts.Add("Alt");
-        if (combo.HasFlag(Keys.Shift)) parts.Add("Shift");
-        parts.Add((combo & Keys.KeyCode).ToString());
+        if (modifiers.HasFlag(Keys.Control)) parts.Add("Ctrl");
+        if (modifiers.HasFlag(Keys.Alt)) parts.Add("Alt");
+        if (modifiers.HasFlag(Keys.Shift)) parts.Add("Shift");
+        foreach (Keys key in keys) parts.Add(key.ToString());
         return parts.ToArray();
     }
+
+    internal static string[] HotkeyParts(Keys combo) =>
+        ChordParts(combo, new[] { combo & Keys.KeyCode });
+
+    /// <summary>The parts of whichever hotkey style is currently active.</summary>
+    internal static string[] ActiveHotkeyParts(Settings s) =>
+        s.UseChordHotkey && s.ChordKeys.Length >= 2
+            ? ChordParts(s.ChordModifiers, s.ChordKeys)
+            : HotkeyParts(s.Hotkey);
 
     internal static string FormatHotkey(Keys combo) => string.Join(" + ", HotkeyParts(combo));
 
@@ -187,6 +278,9 @@ public sealed class SettingsForm : Form
         _settings.ShowOverlay = _chkOverlay.Checked;
         _settings.HotkeyEnabled = _chkHotkeyEnabled.Checked;
         _settings.Hotkey = _hotkey;
+        _settings.UseChordHotkey = _chkChord.Checked;
+        _settings.ChordModifiers = _chordModifiers;
+        _settings.ChordKeys = _chordKeys;
         _settings.Save();
 
         SettingsSaved?.Invoke();

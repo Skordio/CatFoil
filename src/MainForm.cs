@@ -171,7 +171,7 @@ public sealed class MainForm : Form
     public void RefreshHotkey()
     {
         _hotkeyBadge.Visible = _settings.HotkeyEnabled;
-        _hotkeyBadge.SetCombo(_settings.Hotkey);
+        _hotkeyBadge.SetParts(SettingsForm.ActiveHotkeyParts(_settings));
     }
 
     public static void OpenBuyPage()
@@ -207,9 +207,9 @@ public sealed class MainForm : Form
             Height = 30;
         }
 
-        public void SetCombo(Keys combo)
+        public void SetParts(string[] parts)
         {
-            _parts = SettingsForm.HotkeyParts(combo);
+            _parts = parts;
 
             int width = 0;
             foreach (string part in _parts)

@@ -60,6 +60,7 @@ public sealed class TrayAppContext : ApplicationContext
         // Hook events fire mid-hook; defer the real work so the hook returns fast.
         _hook.BlockedKeyPress += () => _mainForm.BeginInvoke(OnBlockedKey);
         _hook.UnlockComboPressed += () => _mainForm.BeginInvoke(() => SetLocked(false));
+        _hook.ChordPressed += () => _mainForm.BeginInvoke(ToggleLock);
         if (!_hook.Install(out int hookError))
         {
             MessageBox.Show(
@@ -251,6 +252,18 @@ public sealed class TrayAppContext : ApplicationContext
 
     private void ApplyHotkeySettings()
     {
+        // Chord mode: our hook detects the combo in both lock states and
+        // RegisterHotKey is retired (it can't express multi-key chords).
+        if (_settings.HotkeyEnabled && _settings.UseChordHotkey && _settings.ChordKeys.Length >= 2)
+        {
+            _hotkey.Unregister();
+            _hook.UnlockCombo = Keys.None;
+            _hook.ChordModifiers = _settings.ChordModifiers;
+            _hook.SetChordKeys(_settings.ChordKeys);
+            return;
+        }
+
+        _hook.SetChordKeys(Array.Empty<Keys>());
         _hook.UnlockCombo = _settings.HotkeyEnabled ? _settings.Hotkey : Keys.None;
         if (_settings.HotkeyEnabled)
         {

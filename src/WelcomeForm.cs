@@ -22,7 +22,7 @@ public sealed class WelcomeForm : Form
         Font = new Font("Segoe UI", 9.75f);
         BackColor = Color.FromArgb(245, 245, 245);
 
-        string hotkey = SettingsForm.FormatHotkey(settings.Hotkey);
+        string hotkey = string.Join(" + ", SettingsForm.ActiveHotkeyParts(settings));
 
         var flow = new FlowLayoutPanel
         {

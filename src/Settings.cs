@@ -26,6 +26,12 @@ public sealed class Settings
 
     public Keys Hotkey { get; set; } = Keys.Control | Keys.Alt | Keys.L;
     public bool HotkeyEnabled { get; set; } = true;
+
+    // Chord mode: modifiers + several keys held together (e.g. Alt+C+F),
+    // detected by our own hook because RegisterHotKey can't express it.
+    public bool UseChordHotkey { get; set; }
+    public Keys ChordModifiers { get; set; } = Keys.Alt;
+    public Keys[] ChordKeys { get; set; } = new[] { Keys.C, Keys.F };
     public bool MinimizeToTrayOnClose { get; set; } = true;
     public bool StartWithWindows { get; set; }
     public bool StartMinimized { get; set; }
