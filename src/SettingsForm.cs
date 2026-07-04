@@ -23,6 +23,7 @@ public sealed class SettingsForm : Form
     private readonly LinkLabel _lnkBuy = new();
     private readonly Button _btnSave = new();
     private readonly Button _btnCancel = new();
+    private readonly Button _btnWelcome = new();
 
     private Keys _hotkey;
 
@@ -85,6 +86,14 @@ public sealed class SettingsForm : Form
         grpLicense.Controls.AddRange(new Control[] { _lblLicenseStatus, _txtLicenseKey, _btnActivate, _lnkBuy });
 
         // --- Buttons ---
+        _btnWelcome.Text = "Welcome tour…";
+        _btnWelcome.Bounds = new Rectangle(12, 430, 120, 30);
+        _btnWelcome.TabStop = false;
+        _btnWelcome.Click += (_, _) =>
+        {
+            using var welcome = new WelcomeForm(_settings);
+            welcome.ShowDialog(this);
+        };
         _btnSave.Text = "Save";
         _btnSave.Bounds = new Rectangle(252, 430, 85, 30);
         _btnSave.Click += OnSaveClicked;
@@ -94,7 +103,7 @@ public sealed class SettingsForm : Form
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
 
-        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, _btnSave, _btnCancel });
+        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, _btnWelcome, _btnSave, _btnCancel });
         RefreshLicenseStatus(null);
     }
 
