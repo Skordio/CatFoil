@@ -31,27 +31,27 @@ public sealed class OverlaySettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(520, 602);
+        ClientSize = new Size(652, 746);
         Font = new Font("Segoe UI", 9.5f);
 
         var intro = new Label
         {
             Text = "Choose how the locked-keyboard badge looks. You can set it separately " +
-                   "for when a fullscreen app is running (games, videos).",
+                   "for when a fullscreen app is running (games, videos). The preview shows the real size.",
             Location = new Point(14, 12),
             AutoSize = true,
-            MaximumSize = new Size(492, 0),
+            MaximumSize = new Size(620, 0),
             ForeColor = Color.FromArgb(70, 70, 70),
         };
 
         _normalEditor = new StateEditor("Normal (no fullscreen app)", _settings.OverlayNormal, _defaultIcon)
-        { Location = new Point(12, 92) };
+        { Location = new Point(12, 84) };
         _fullscreenEditor = new StateEditor("When a fullscreen app is running", _settings.OverlayFullscreen, _defaultIcon)
-        { Location = new Point(12, 324) };
+        { Location = new Point(12, 392) };
 
-        var btnOk = new Button { Text = "OK", Bounds = new Rectangle(332, 560, 85, 30) };
+        var btnOk = new Button { Text = "OK", Bounds = new Rectangle(464, 704, 85, 30) };
         btnOk.Click += OnOk;
-        var btnCancel = new Button { Text = "Cancel", Bounds = new Rectangle(423, 560, 85, 30) };
+        var btnCancel = new Button { Text = "Cancel", Bounds = new Rectangle(555, 704, 85, 30) };
         btnCancel.Click += (_, _) => Close();
         AcceptButton = btnOk;
         CancelButton = btnCancel;
@@ -102,7 +102,7 @@ public sealed class OverlaySettingsForm : Form
             _previewIcon = defaultIcon;
 
             Text = title;
-            Size = new Size(496, 224);
+            Size = new Size(628, 300);
 
             _chkShow.Text = "Show the overlay in this state";
             _chkShow.AutoSize = true;
@@ -152,7 +152,8 @@ public sealed class OverlaySettingsForm : Form
             _lblSize.Location = new Point(260, 178);
             _lblSize.Text = $"{_working.ClampedSize()} px";
 
-            _preview = new PreviewBox { Bounds = new Rectangle(352, 28, 130, 168) };
+            // Big enough to show the full 32–256 px size range at true scale.
+            _preview = new PreviewBox { Bounds = new Rectangle(352, 24, 268, 268) };
 
             Controls.AddRange(new Control[]
             {
