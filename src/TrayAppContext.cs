@@ -36,6 +36,7 @@ public sealed class TrayAppContext : ApplicationContext
     private int _trialSecondsLeft;
     private bool _trialWarningShown;
     private int _lastToggleTick;
+    private int _lockStartTick;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
@@ -90,6 +91,7 @@ public sealed class TrayAppContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add(openItem);
         menu.Items.Add(_lockMenuItem);
+        menu.Items.Add(new ToolStripMenuItem("Statistics…", null, (_, _) => ShowStats()));
         menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => ExitApp()));
@@ -140,6 +142,9 @@ public sealed class TrayAppContext : ApplicationContext
         if (locked)
         {
             _hook.Lock();
+            _lockStartTick = Environment.TickCount;
+            _settings.StatLockSessions++;
+            _settings.Save();
             _mainForm.SetLockedUi(true);
             _overlay.SetActive(_settings.ShowOverlay);
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
@@ -156,6 +161,10 @@ public sealed class TrayAppContext : ApplicationContext
         {
             _trialTimer.Stop();
             _hook.Unlock();
+            // Accumulate this session's locked time and persist the stats.
+            long elapsed = unchecked((uint)Environment.TickCount - (uint)_lockStartTick) / 1000;
+            _settings.StatLockedSeconds += elapsed;
+            _settings.Save();
             _overlay.SetActive(false);
             _overlay.SetRemaining(null);
             _mainForm.SetLockedUi(false);
@@ -173,6 +182,10 @@ public sealed class TrayAppContext : ApplicationContext
     private void OnBlockedKey()
     {
         if (!_hook.IsLocked) return;
+
+        // Count it — this is a key the cat pressed that went nowhere. Kept in
+        // memory during the session and persisted when the session ends.
+        _settings.StatBlockedKeys++;
 
         // The window is the unlock failsafe: bring it back if the user has no
         // visible way into CatFoil (or it's sitting minimized).
@@ -228,6 +241,12 @@ public sealed class TrayAppContext : ApplicationContext
             _mainForm.WindowState = FormWindowState.Normal;
         _mainForm.BringToFront();
         _mainForm.Activate();
+    }
+
+    private void ShowStats()
+    {
+        using var stats = new StatsForm(_settings, _appIcon);
+        stats.ShowDialog(_mainForm);
     }
 
     private void ShowWelcome()

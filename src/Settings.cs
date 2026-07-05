@@ -51,6 +51,11 @@ public sealed class Settings
     public string? LicenseInstanceId { get; set; }
     public string? LicenseSignature { get; set; }
 
+    // Lifetime usage statistics.
+    public int StatLockSessions { get; set; }
+    public long StatLockedSeconds { get; set; }
+    public long StatBlockedKeys { get; set; }
+
     public static Settings Load()
     {
         try
