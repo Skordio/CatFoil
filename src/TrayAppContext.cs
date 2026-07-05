@@ -53,6 +53,7 @@ public sealed class TrayAppContext : ApplicationContext
         _mainForm.ExitRequested += ExitApp;
 
         _overlay = new OverlayForm(_appIcon);
+        _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
         _overlay.ApplySavedPosition(_settings.OverlayPosition);
         _overlay.OpenRequested += ShowMainWindow;
         _overlay.PositionChanged += p =>
@@ -254,6 +255,7 @@ public sealed class TrayAppContext : ApplicationContext
             ApplyHotkeySettings();
             ApplyStartWithWindows();
             _mainForm.RefreshHotkey();
+            _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
             if (_hook.IsLocked)
                 _overlay.SetActive(_settings.ShowOverlay);
         };
