@@ -259,6 +259,8 @@ public sealed class TrayAppContext : ApplicationContext
             if (_hook.IsLocked)
                 _overlay.SetActive(_settings.ShowOverlay);
         };
+        // The elevated relaunch is already running; quit so it can take over.
+        _settingsForm.RestartElevatedRequested += ExitApp;
         _settingsForm.Show();
     }
 

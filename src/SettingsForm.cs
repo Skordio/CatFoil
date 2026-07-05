@@ -15,6 +15,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _chkStartMinimized = new();
     private readonly CheckBox _chkStartWithWindows = new();
     private readonly CheckBox _chkOverlay = new();
+    private readonly CheckBox _chkRunAsAdmin = new();
     private readonly CheckBox _chkHotkeyEnabled = new();
     private readonly CheckBox _chkChord = new();
     private readonly TextBox _txtHotkey = new();
@@ -39,6 +40,10 @@ public sealed class SettingsForm : Form
 
     public event Action? SettingsSaved;
 
+    /// <summary>Raised after an elevated instance has been launched; the app
+    /// should quit so that instance can take over the single-instance slot.</summary>
+    public event Action? RestartElevatedRequested;
+
     public SettingsForm(Settings settings, ILicenseProvider license)
     {
         _settings = settings;
@@ -53,11 +58,11 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 542);
+        ClientSize = new Size(512, 572);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
-        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 186) };
+        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 216) };
         AddCheck(grpGeneral, _chkTrayOnClose, "Hide to the tray when the window is closed", 26, settings.MinimizeToTrayOnClose);
         AddCheck(grpGeneral, _chkStartMinimized, "Start hidden in the system tray", 56, settings.StartMinimized);
         AddCheck(grpGeneral, _chkStartWithWindows, "Start CatFoil when Windows starts", 86, settings.StartWithWindows);
@@ -71,8 +76,23 @@ public sealed class SettingsForm : Form
         btnOverlay.Click += OnCustomizeOverlay;
         grpGeneral.Controls.Add(btnOverlay);
 
+        // Run-as-admin: elevating lets the keyboard hook also block elevated windows.
+        _chkRunAsAdmin.Text = "Run as administrator (also block elevated windows)";
+        _chkRunAsAdmin.AutoSize = true;
+        _chkRunAsAdmin.Location = new Point(16, 184);
+        bool elevated = Elevation.IsElevated();
+        _chkRunAsAdmin.Checked = elevated;
+        _chkRunAsAdmin.Enabled = !elevated;   // already elevated → nothing more to do
+        _tip.SetToolTip(_chkRunAsAdmin, elevated
+            ? "CatFoil is already running as administrator."
+            : "Restarts CatFoil with administrator rights (Windows shows a UAC prompt) so it can\n" +
+              "also block keystrokes to elevated windows. Ctrl+Alt+Del and Win+L still can't be\n" +
+              "blocked. Autostart launches normally, so re-enable this after a restart.");
+        _chkRunAsAdmin.CheckedChanged += OnRunAsAdminChanged;   // wired AFTER setting initial state
+        grpGeneral.Controls.Add(_chkRunAsAdmin);
+
         // --- Hotkey ---
-        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 208, 488, 132) };
+        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 238, 488, 132) };
         AddCheck(grpHotkey, _chkHotkeyEnabled, "Lock/unlock the keyboard with a hotkey:", 26, settings.HotkeyEnabled);
         _txtHotkey.ReadOnly = true;
         _txtHotkey.Bounds = new Rectangle(16, 56, 170, 27);
@@ -104,7 +124,7 @@ public sealed class SettingsForm : Form
         // The status label wraps to 2 lines for longer messages, so it goes
         // LAST (at the bottom) where it can only grow into empty space — never
         // over the key box the way it did when it sat on top.
-        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 350, 488, 138) };
+        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 380, 488, 138) };
         _txtLicenseKey.Bounds = new Rectangle(16, 28, 268, 27);
         _txtLicenseKey.PlaceholderText = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
         _txtLicenseKey.Text = settings.LicenseKey ?? "";
@@ -122,7 +142,7 @@ public sealed class SettingsForm : Form
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 500, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 530, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -130,13 +150,13 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnApply.Text = "Apply";
-        _btnApply.Bounds = new Rectangle(233, 500, 85, 30);
+        _btnApply.Bounds = new Rectangle(233, 530, 85, 30);
         _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 500, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 530, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 500, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 530, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
@@ -282,6 +302,38 @@ public sealed class SettingsForm : Form
         {
             _lblLicenseStatus.ForeColor = SystemColors.ControlText;
             _lblLicenseStatus.Text = "Free version — lock sessions end after 30 minutes.";
+        }
+    }
+
+    private void OnRunAsAdminChanged(object? sender, EventArgs e)
+    {
+        // Only act on the user turning it ON. Reverting it below sets it back to
+        // false, which re-enters here and returns immediately.
+        if (!_chkRunAsAdmin.Checked || Elevation.IsElevated()) return;
+
+        var confirm = MessageBox.Show(this,
+            "CatFoil will restart with administrator rights so it can block elevated windows too.\n\n" +
+            "Windows will show a UAC prompt. Continue?",
+            "Run as administrator", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+        if (confirm != DialogResult.OK)
+        {
+            _chkRunAsAdmin.Checked = false;
+            return;
+        }
+
+        // Save any pending changes so the elevated instance picks them up, then
+        // hand off: launch elevated and, only on success, ask the app to quit.
+        PersistSettings();
+        if (Elevation.TryRelaunchElevated())
+        {
+            RestartElevatedRequested?.Invoke();
+        }
+        else
+        {
+            _chkRunAsAdmin.Checked = false;
+            MessageBox.Show(this,
+                "CatFoil was not restarted with administrator rights.",
+                "Run as administrator", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 
