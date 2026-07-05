@@ -15,8 +15,6 @@ public sealed class TrayAppContext : ApplicationContext
 {
     private const int ToggleDebounceMs = 400;
     private const int TrialWarningSeconds = 120;
-    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValueName = "CatFoil";
 
     private readonly Settings _settings;
     private readonly ILicenseProvider _license;
@@ -75,7 +73,7 @@ public sealed class TrayAppContext : ApplicationContext
 
         _hotkey.HotkeyPressed += ToggleLock;
         ApplyHotkeySettings();
-        ApplyStartWithWindows();
+        ApplyStartupSettings();
 
         _trialTimer.Tick += (_, _) => TrialTick();
 
@@ -253,7 +251,7 @@ public sealed class TrayAppContext : ApplicationContext
         _settingsForm.SettingsSaved += () =>
         {
             ApplyHotkeySettings();
-            ApplyStartWithWindows();
+            ApplyStartupSettings();
             _mainForm.RefreshHotkey();
             _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
             if (_hook.IsLocked)
@@ -341,21 +339,7 @@ public sealed class TrayAppContext : ApplicationContext
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
     }
 
-    private void ApplyStartWithWindows()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
-            if (_settings.StartWithWindows)
-                key.SetValue(RunValueName, $"\"{Application.ExecutablePath}\"");
-            else
-                key.DeleteValue(RunValueName, throwOnMissingValue: false);
-        }
-        catch
-        {
-            // Registry access denied — autostart just won't work; not fatal.
-        }
-    }
+    private void ApplyStartupSettings() => Startup.Apply(_settings);
 
     // ---------------------------------------------------------------
     // Lifecycle

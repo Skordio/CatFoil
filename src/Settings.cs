@@ -34,6 +34,9 @@ public sealed class Settings
     public Keys[] ChordKeys { get; set; } = new[] { Keys.C, Keys.F };
     public bool MinimizeToTrayOnClose { get; set; } = true;
     public bool StartWithWindows { get; set; }
+    // Auto-start elevated at logon via a scheduled task (no UAC prompt). When on,
+    // it replaces the non-elevated Run-key autostart.
+    public bool StartElevatedOnBoot { get; set; }
     public bool StartMinimized { get; set; }
     public bool ShowOverlay { get; set; } = true;
     public bool WelcomeShown { get; set; }

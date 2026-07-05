@@ -16,6 +16,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _chkStartWithWindows = new();
     private readonly CheckBox _chkOverlay = new();
     private readonly CheckBox _chkRunAsAdmin = new();
+    private readonly CheckBox _chkStartElevatedBoot = new();
     private readonly CheckBox _chkHotkeyEnabled = new();
     private readonly CheckBox _chkChord = new();
     private readonly TextBox _txtHotkey = new();
@@ -58,11 +59,11 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 572);
+        ClientSize = new Size(512, 600);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
-        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 216) };
+        var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 244) };
         AddCheck(grpGeneral, _chkTrayOnClose, "Hide to the tray when the window is closed", 26, settings.MinimizeToTrayOnClose);
         AddCheck(grpGeneral, _chkStartMinimized, "Start hidden in the system tray", 56, settings.StartMinimized);
         AddCheck(grpGeneral, _chkStartWithWindows, "Start CatFoil when Windows starts", 86, settings.StartWithWindows);
@@ -91,8 +92,23 @@ public sealed class SettingsForm : Form
         _chkRunAsAdmin.CheckedChanged += OnRunAsAdminChanged;   // wired AFTER setting initial state
         grpGeneral.Controls.Add(_chkRunAsAdmin);
 
+        // Silent elevated autostart (a scheduled task) — sub-option of run-as-admin,
+        // and it needs elevation to create, so it's enabled only while elevated.
+        _chkStartElevatedBoot.Text = "Start automatically at logon, elevated (no prompt)";
+        _chkStartElevatedBoot.AutoSize = true;
+        _chkStartElevatedBoot.Location = new Point(36, 210);   // indented under Run-as-admin
+        _chkStartElevatedBoot.Checked = Startup.TaskExists();
+        _chkStartElevatedBoot.Enabled = elevated;
+        _tip.SetToolTip(_chkStartElevatedBoot, elevated
+            ? "Creates a Windows scheduled task so CatFoil starts with administrator rights at\n" +
+              "logon, with no UAC prompt. Replaces the normal 'Start with Windows' startup."
+            : "Turn on 'Run as administrator' first — creating the elevated startup task needs\n" +
+              "administrator rights.");
+        _chkStartElevatedBoot.CheckedChanged += OnStartElevatedBootChanged;   // after initial state
+        grpGeneral.Controls.Add(_chkStartElevatedBoot);
+
         // --- Hotkey ---
-        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 238, 488, 132) };
+        var grpHotkey = new GroupBox { Text = "Hotkey", Bounds = new Rectangle(12, 266, 488, 132) };
         AddCheck(grpHotkey, _chkHotkeyEnabled, "Lock/unlock the keyboard with a hotkey:", 26, settings.HotkeyEnabled);
         _txtHotkey.ReadOnly = true;
         _txtHotkey.Bounds = new Rectangle(16, 56, 170, 27);
@@ -124,7 +140,7 @@ public sealed class SettingsForm : Form
         // The status label wraps to 2 lines for longer messages, so it goes
         // LAST (at the bottom) where it can only grow into empty space — never
         // over the key box the way it did when it sat on top.
-        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 380, 488, 138) };
+        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 408, 488, 138) };
         _txtLicenseKey.Bounds = new Rectangle(16, 28, 268, 27);
         _txtLicenseKey.PlaceholderText = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
         _txtLicenseKey.Text = settings.LicenseKey ?? "";
@@ -142,7 +158,7 @@ public sealed class SettingsForm : Form
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 530, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 558, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -150,13 +166,13 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnApply.Text = "Apply";
-        _btnApply.Bounds = new Rectangle(233, 530, 85, 30);
+        _btnApply.Bounds = new Rectangle(233, 558, 85, 30);
         _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 530, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 558, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 530, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 558, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
@@ -337,6 +353,42 @@ public sealed class SettingsForm : Form
         }
     }
 
+    private void OnStartElevatedBootChanged(object? sender, EventArgs e)
+    {
+        if (!Elevation.IsElevated()) return;   // the control is disabled unless elevated
+
+        if (_chkStartElevatedBoot.Checked)
+        {
+            if (Startup.EnableTask())
+            {
+                _settings.StartElevatedOnBoot = true;
+                Startup.SetRunKey(false);   // the scheduled task owns startup now
+                _settings.Save();
+            }
+            else
+            {
+                SetElevatedBootChecked(false);
+                MessageBox.Show(this, "Could not create the elevated startup task.",
+                    "Start elevated at logon", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        else
+        {
+            Startup.DisableTask();
+            _settings.StartElevatedOnBoot = false;
+            Startup.SetRunKey(_chkStartWithWindows.Checked);   // restore normal autostart if wanted
+            _settings.Save();
+        }
+    }
+
+    // Change the checkbox without re-entering its CheckedChanged handler.
+    private void SetElevatedBootChecked(bool value)
+    {
+        _chkStartElevatedBoot.CheckedChanged -= OnStartElevatedBootChanged;
+        _chkStartElevatedBoot.Checked = value;
+        _chkStartElevatedBoot.CheckedChanged += OnStartElevatedBootChanged;
+    }
+
     private void OnCustomizeOverlay(object? sender, EventArgs e)
     {
         using var overlay = new OverlaySettingsForm(_settings, Icon ?? SystemIcons.Application);
@@ -358,6 +410,7 @@ public sealed class SettingsForm : Form
         _settings.MinimizeToTrayOnClose = _chkTrayOnClose.Checked;
         _settings.StartMinimized = _chkStartMinimized.Checked;
         _settings.StartWithWindows = _chkStartWithWindows.Checked;
+        _settings.StartElevatedOnBoot = _chkStartElevatedBoot.Checked;
         _settings.ShowOverlay = _chkOverlay.Checked;
         _settings.HotkeyEnabled = _chkHotkeyEnabled.Checked;
         _settings.Hotkey = _hotkey;

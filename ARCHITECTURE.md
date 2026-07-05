@@ -55,8 +55,14 @@ Behaviors:
 A fixed-size dialog (512×542), lazily created and reused by the tray. Groups:
 
 - **General**: checkboxes — Hide to tray on close · Start hidden in tray ·
-  Start CatFoil when Windows starts · Show the cat overlay while locked — plus a
-  **"Customize overlay…"** button opening the overlay menu.
+  Start CatFoil when Windows starts · Show the cat overlay while locked · **Run as
+  administrator (also block elevated windows)** with an indented sub-option **Start
+  automatically at logon, elevated (no prompt)** — plus a **"Customize overlay…"**
+  button opening the overlay menu. Checking "Run as administrator" relaunches
+  CatFoil elevated (UAC prompt) so its hook can also block elevated foreground
+  windows; if already elevated the box is checked and disabled. The elevated-logon
+  sub-option (enabled only while elevated) creates a Task Scheduler task that starts
+  CatFoil elevated at logon with no prompt. See §8.
 - **Hotkey**: enable checkbox · a click-to-capture hotkey box ("press keys") ·
   a **Multi-key chord** checkbox (with a tooltip explaining the leak-through
   trade-off). Capture logic differs for classic vs chord mode.
@@ -150,14 +156,17 @@ the always-available escape hatch.
 JSON at `%APPDATA%\CatFoil\settings.json` (`Keys` serialized as string flags).
 Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled`, `UseChordHotkey`
 (default off) + `ChordModifiers`/`ChordKeys`, `MinimizeToTrayOnClose`,
-`StartWithWindows`, `StartMinimized`, `ShowOverlay`, `WelcomeShown`,
+`StartWithWindows`, `StartElevatedOnBoot`, `StartMinimized`, `ShowOverlay`, `WelcomeShown`,
 `OverlayPosition`, per-state `OverlayNormal`/`OverlayFullscreen`
 (`OverlayStateSettings`: Visible, UseCustomIcon, CustomIconFile, Size 32–256,
 ShowBackground), and license fields (`LicenseKey`, `LicenseInstanceId`,
 `LicenseSignature`). Corrupt files fall back to defaults.
 
-"Start with Windows" is an `HKCU\...\Run\CatFoil` value pointing at the current
-executable, re-applied on every launch and on save.
+Startup is managed by `src/Startup.cs`: "Start with Windows" is an
+`HKCU\...\Run\CatFoil` value (non-elevated), re-applied on every launch and save;
+"Start elevated at logon" (`StartElevatedOnBoot`) is instead a Task Scheduler task
+with highest privileges. The two are mutually exclusive — when the elevated task is
+on, the Run key is suppressed so they don't both launch at logon.
 
 ---
 
@@ -173,4 +182,36 @@ executable, re-applied on every launch and on save.
 - One-time license (Lemon Squeezy) removing the 30-minute free-session limit,
   machine-bound to resist casual bypass.
 - Resilience to Windows silently dropping global input after idle/sleep.
+- Optional **run-as-administrator** relaunch so the lock also covers elevated windows,
+  and optional **silent elevated autostart** at logon (scheduled task, no UAC prompt).
 - Single-instance; second launch resurfaces the running one.
+
+---
+
+## 8. What the lock can't block (and elevation)
+
+CatFoil blocks every key-**down** its hook receives while locked, but some things
+are out of a user-mode hook's reach:
+
+- **Ctrl + Alt + Del** — the Secure Attention Sequence, handled by Windows itself.
+  Never reaches any app. This is the documented escape hatch.
+- **Win + L** (lock workstation) — Windows processes this specially; low-level
+  keyboard hooks generally can't suppress it. (Effect is just "PC locks.")
+- **The secure desktop** — UAC prompt, lock/login screens, the Ctrl+Alt+Del menu:
+  the hook doesn't run there at all.
+- **Elevated foreground windows** — a medium-integrity hook can't block keystrokes
+  going to a higher-integrity (UAC-elevated) window. This is the gap the **Run as
+  administrator** toggle (§2.2) closes: it relaunches CatFoil elevated
+  (`src/Elevation.cs` → `runas`), and the new instance waits for the old one to
+  exit (`--await-exit <pid>`, handled in `src/Program.cs`) before taking the
+  single-instance slot. Even elevated, Ctrl+Alt+Del and Win+L remain unblockable.
+- **Key-ups always pass through** by design (prevents stuck modifiers) — harmless,
+  since a lone key-up can't type. Some special hardware/media/Fn keys may also
+  bypass the hook depending on the keyboard. The **mouse is never blocked**.
+
+To make elevation persist, the **Start automatically at logon, elevated** sub-option
+(`src/Startup.cs` → a Task Scheduler task with `RunLevel=HighestAvailable`,
+`LogonType=InteractiveToken`) starts CatFoil elevated at every logon with **no UAC
+prompt**. Creating/removing that task needs an already-elevated process, so the
+option is only enabled once "Run as administrator" is on. Without it, elevation is
+per-run and would need re-enabling after each reboot.
