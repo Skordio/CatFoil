@@ -29,6 +29,9 @@ public sealed class TrayAppContext : ApplicationContext
     // long idle / sleep, and otherwise nothing restores them until the user
     // reopens a window. 60s keeps the vulnerable gap short without churn.
     private readonly System.Windows.Forms.Timer _inputWatchdog = new() { Interval = 60_000 };
+    // Counts down a user-chosen timed lock, then auto-unlocks.
+    private readonly System.Windows.Forms.Timer _timedTimer = new() { Interval = 1000 };
+    private int _timedSecondsLeft;
     private readonly Icon _appIcon;
 
     private SettingsForm? _settingsForm;
@@ -76,6 +79,7 @@ public sealed class TrayAppContext : ApplicationContext
         ApplyStartupSettings();
 
         _trialTimer.Tick += (_, _) => TrialTick();
+        _timedTimer.Tick += (_, _) => TimedTick();
 
         // Keep global input alive across long idle and sleep (see ReassertInput).
         _inputWatchdog.Tick += (_, _) => ReassertInput();
@@ -87,9 +91,17 @@ public sealed class TrayAppContext : ApplicationContext
         var openItem = new ToolStripMenuItem("Open CatFoil", null, (_, _) => ShowMainWindow());
         openItem.Font = new Font(openItem.Font, FontStyle.Bold);
 
+        var lockForItem = new ToolStripMenuItem("Lock for…");
+        foreach (int minutes in new[] { 5, 15, 30, 60 })
+        {
+            int m = minutes;   // capture
+            lockForItem.DropDownItems.Add(new ToolStripMenuItem($"{m} minutes", null, (_, _) => LockFor(m)));
+        }
+
         var menu = new ContextMenuStrip();
         menu.Items.Add(openItem);
         menu.Items.Add(_lockMenuItem);
+        menu.Items.Add(lockForItem);
         menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => ExitApp()));
@@ -155,6 +167,8 @@ public sealed class TrayAppContext : ApplicationContext
         else
         {
             _trialTimer.Stop();
+            _timedTimer.Stop();
+            _timedSecondsLeft = 0;
             _hook.Unlock();
             _overlay.SetActive(false);
             _overlay.SetRemaining(null);
@@ -168,6 +182,35 @@ public sealed class TrayAppContext : ApplicationContext
                 ShowMainWindow();
             }
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Timed lock ("Lock for N minutes", then auto-unlock)
+    // ---------------------------------------------------------------
+    private void LockFor(int minutes)
+    {
+        _timedSecondsLeft = Math.Max(1, minutes) * 60;
+        if (!_hook.IsLocked) SetLocked(true);   // no-op if somehow already locked
+        _timedTimer.Start();
+        UpdateTimedCountdown();
+    }
+
+    private void TimedTick()
+    {
+        _timedSecondsLeft--;
+        if (_timedSecondsLeft <= 0)
+        {
+            SetLocked(false);   // auto-unlock
+            return;
+        }
+        UpdateTimedCountdown();
+    }
+
+    private void UpdateTimedCountdown()
+    {
+        var remaining = TimeSpan.FromSeconds(_timedSecondsLeft);
+        _mainForm.ShowLockCountdown(remaining);
+        _overlay.SetRemaining(remaining);
     }
 
     private void OnBlockedKey()
@@ -374,6 +417,7 @@ public sealed class TrayAppContext : ApplicationContext
         {
             DetachInputWatchdog();
             _inputWatchdog.Dispose();
+            _timedTimer.Dispose();
             _showWait?.Unregister(null);
             _tray?.Dispose();
             _hotkey.Dispose();

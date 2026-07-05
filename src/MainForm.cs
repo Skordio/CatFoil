@@ -165,6 +165,13 @@ public sealed class MainForm : Form
         _status.Text = LockedText + $"\n\nFree session ends in {remaining:m\\:ss}";
     }
 
+    /// <summary>Countdown for a user-chosen timed lock (no buy link).</summary>
+    public void ShowLockCountdown(TimeSpan remaining)
+    {
+        if (!_locked) return;
+        _status.Text = LockedText + $"\n\nAuto-unlock in {remaining:m\\:ss}";
+    }
+
     public void ShowTrialExpired()
     {
         _status.ForeColor = Color.FromArgb(180, 0, 0);
