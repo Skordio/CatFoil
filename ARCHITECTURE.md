@@ -184,6 +184,7 @@ on, the Run key is suppressed so they don't both launch at logon.
 - Resilience to Windows silently dropping global input after idle/sleep.
 - Optional **run-as-administrator** relaunch so the lock also covers elevated windows,
   and optional **silent elevated autostart** at logon (scheduled task, no UAC prompt).
+- Optional **sound cues** on lock/unlock and blocked keys (Windows system sounds).
 - Single-instance; second launch resurfaces the running one.
 
 ---
