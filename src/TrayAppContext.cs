@@ -180,6 +180,13 @@ public sealed class TrayAppContext : ApplicationContext
     private void IdleCheck()
     {
         if (!_settings.AutoLockEnabled || _hook.IsLocked) return;
+
+        // Don't lock during passive full-screen use (movies, video calls,
+        // full-screen slideshows, games): those legitimately produce no
+        // keyboard/mouse input for long stretches, so idle time alone would
+        // wrongly read them as "away from the desk" and lock mid-activity.
+        if (OverlayForm.ForegroundIsFullscreen()) return;
+
         uint threshold = (uint)Math.Clamp(_settings.AutoLockMinutes, 1, 120) * 60_000u;
         if (IdleTime.Milliseconds() >= threshold)
             SetLocked(true);

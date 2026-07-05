@@ -7,7 +7,10 @@ Findings ranked most-significant first.
 
 ---
 
-### 1. Auto-lock fires during passive full-screen use (video, reading, slides) — [medium · correctness-of-intent · CONFIRMED]
+### 1. Auto-lock fires during passive full-screen use (video, reading, slides) — [medium · correctness-of-intent · FIXED]
+- **Fixed:** `IdleCheck()` now returns early when a full-screen app is the foreground
+  window, reusing `OverlayForm.ForegroundIsFullscreen()`. Verified the detection helper
+  returns True for a separate-process full-screen window and False for a windowed one.
 - **File:** `src/TrayAppContext.cs:180-185`
 - **Failure scenario:** Idle is measured purely by `GetLastInputInfo` (no keyboard or
   mouse). Someone watching a full-screen movie, on a video call, or reading a long page

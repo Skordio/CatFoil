@@ -244,7 +244,7 @@ public sealed class OverlayForm : Form
         RenderLayered();
     }
 
-    private static bool ForegroundIsFullscreen()
+    internal static bool ForegroundIsFullscreen()
     {
         IntPtr fg = GetForegroundWindow();
         if (fg == IntPtr.Zero) return false;
