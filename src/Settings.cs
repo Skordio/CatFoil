@@ -39,6 +39,10 @@ public sealed class Settings
     public bool StartElevatedOnBoot { get; set; }
     public bool StartMinimized { get; set; }
     public bool ShowOverlay { get; set; } = true;
+
+    // Optional audio cues (uses the user's Windows system sounds).
+    public bool SoundOnLockUnlock { get; set; }
+    public bool SoundOnBlockedKey { get; set; }
     public bool WelcomeShown { get; set; }
     public Point? OverlayPosition { get; set; }
 
