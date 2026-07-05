@@ -1,0 +1,176 @@
+# CatFoil — Architecture & Feature Reference
+
+CatFoil is a Windows tray utility that **locks the keyboard while leaving the mouse
+working** — so a cat walking across the desk can't type. It is a portable,
+single-file WinForms app on .NET 8 (`net8.0-windows`), with no external NuGet
+dependencies. Settings live in `%APPDATA%\CatFoil\settings.json`.
+
+This document maps every window, menu, and feature, and how the pieces fit
+together. It is a reference for understanding the app end-to-end.
+
+---
+
+## 1. Process model & lifecycle
+
+| Concern | Where | How |
+| --- | --- | --- |
+| Entry point | `src/Program.cs` | `[STAThread] Main`. Sets `HighDpiMode.PerMonitorV2`, visual styles, then runs `TrayAppContext`. |
+| Single instance | `src/Program.cs` | Named mutex `Local\CatFoil-SingleInstance`. A second launch sets the `Local\CatFoil-ShowMainWindow` auto-reset event and exits; the first instance is waiting on that event and responds by showing its main window. |
+| App shell | `src/TrayAppContext.cs` | An `ApplicationContext` (no main form owns the lifetime). Owns the tray icon, keyboard hook, hotkey, overlay, timers, and the lazily-created windows. |
+| Shutdown | `TrayAppContext.ExitApp` | Unlocks if locked, detaches watchdog/SystemEvents, hides tray, disposes hook/hotkey, closes overlay and main form, `ExitThread()`. |
+
+The app is **tray-first**: closing the main window hides it to the tray (unless
+"Hide to tray on close" is off); the process keeps running until Exit is chosen.
+
+---
+
+## 2. Screens & windows
+
+### 2.1 Main window — `src/MainForm.cs`
+The central lock/unlock surface. Two visual states:
+
+- **Unlocked** (420×260): large green "Keyboard is ACTIVE" status.
+- **Locked** (760×480, re-centered): calm gray message —
+  *"The keyboard is currently locked and will not accept input except Ctrl + Alt + Delete"* —
+  and the toggle button reads **Unlock Keyboard**.
+
+Persistent controls:
+- **Lock/Unlock Keyboard** button (docked bottom, large) — raises `ToggleRequested`.
+- **Exit** button (top-left, soft red tint) — raises `ExitRequested`.
+- **Settings** button (top-left, next to Exit) — raises `SettingsRequested`.
+- **Hotkey badge** (bottom-left, above the lock button) — a custom-drawn control
+  (`HotkeyBadge`) rendering the active hotkey as 3D keycaps joined by "+". Hidden
+  when the hotkey is disabled.
+- **Buy-a-license link** (hidden except during trial countdown/expiry).
+
+Behaviors:
+- **Close-to-tray**: `FormClosing` cancels a user close and hides, unless
+  `AllowClose` is set (real exit) or the tray-on-close setting is off.
+- **Trial countdown**: `ShowTrialCountdown` appends "Free session ends in m:ss"
+  and reveals the buy link.
+- **Trial expired**: `ShowTrialExpired` shows a red "Free session limit reached"
+  message + buy link.
+
+### 2.2 Settings window — `src/SettingsForm.cs`
+A fixed-size dialog (512×542), lazily created and reused by the tray. Groups:
+
+- **General**: checkboxes — Hide to tray on close · Start hidden in tray ·
+  Start CatFoil when Windows starts · Show the cat overlay while locked — plus a
+  **"Customize overlay…"** button opening the overlay menu.
+- **Hotkey**: enable checkbox · a click-to-capture hotkey box ("press keys") ·
+  a **Multi-key chord** checkbox (with a tooltip explaining the leak-through
+  trade-off). Capture logic differs for classic vs chord mode.
+- **License**: key entry box · **Activate** button (async call) · buy link ·
+  a status label (bottom, wraps to 2 lines) reflecting licensed/free state.
+
+Bottom row: **Welcome tour…** · **Apply** (persist without closing) ·
+**Save** (persist + close) · **Cancel**. Save/Apply both call `PersistSettings()`,
+which writes settings and raises `SettingsSaved` so the tray applies changes live.
+
+### 2.3 Overlay customization menu — `src/OverlaySettingsForm.cs`
+A dialog (652×746) opened from Settings → "Customize overlay…". Two mirrored
+**state editors** (`StateEditor`):
+- **Normal (no fullscreen app)**
+- **When a fullscreen app is running**
+
+Each editor has: show-in-this-state toggle · Default cat / Custom image radios +
+**Browse…** · size slider (32–256 px) · show-background-box toggle · and a
+**checkerboard live preview** (`PreviewBox`) that paints via the shared
+`OverlayRenderer` at true 1:1 size. On **OK**, any newly chosen custom image is
+copied into `%APPDATA%\CatFoil\` as `overlay-normal.<ext>` / `overlay-fullscreen.<ext>`,
+the two `OverlayStateSettings` are written, and `SettingsSaved` is raised.
+
+### 2.4 Welcome window — `src/WelcomeForm.cs`
+Shown once on first launch (flag `Settings.WelcomeShown`), and re-openable from
+Settings → "Welcome tour…". A scrolling tour (auto-sized to content, since the
+hotkey string is variable): what CatFoil does, Locking, Unlocking, the cat badge,
+the tray icon, and the free-version limit. Single **Get started** button.
+
+### 2.5 Locked overlay badge — `src/OverlayForm.cs`
+A small, borderless, always-on-top **layered window** (WS_EX_LAYERED +
+`UpdateLayeredWindow` pushing a 32bpp ARGB bitmap) shown while locked. It never
+steals focus (WS_EX_NOACTIVATE, `ShowWithoutActivation`). Features:
+- **Per-state appearance**: a 1-second poll picks Normal vs Fullscreen state via
+  `ForegroundIsFullscreen()` and shows/hides/resizes/repaints accordingly.
+- **Draggable** (position saved, clamped to the virtual screen); a **click**
+  (no drag) opens the main window.
+- **Countdown text** during the trial warning (GDI+ `DrawString` so glyphs carry
+  alpha on the layered surface).
+- **Red flash** on a blocked keypress (`FlashBlockedKey`).
+- **Manual tooltip** shown on hover (auto tooltips don't work on never-activated
+  windows).
+Painting is shared with the settings preview through `src/OverlayRenderer.cs`.
+
+---
+
+## 3. System tray icon & menu
+
+Owned by `TrayAppContext`. The `NotifyIcon` uses the app icon; its tooltip text
+tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
+
+- **Double-click** the tray icon → open the main window.
+- **Right-click** → context menu:
+  1. **Open CatFoil** (bold default) → show main window
+  2. **Lock Keyboard** / **Unlock Keyboard** (label toggles with state)
+  3. **Settings…** → open the settings window
+  4. — separator —
+  5. **Exit** → shut the app down
+
+---
+
+## 4. Locking engine
+
+| Piece | File | Role |
+| --- | --- | --- |
+| Low-level hook | `src/KeyboardHook.cs` | `WH_KEYBOARD_LL`. While **locked**, swallows every key-**down** (returns 1); key-**ups** always pass through so Windows' modifier state never desyncs. Mouse is untouched (no mouse hook). |
+| Unlock while locked | `src/KeyboardHook.cs` | RegisterHotKey can't fire while keys are swallowed, so the unlock combo is detected **inside** the hook, using modifier state the hook **tracks itself** (`TrackModifier`) — never `GetAsyncKeyState`, which is blind to swallowed keys. |
+| Classic hotkey | `src/HotkeyManager.cs` | `RegisterHotKey` (with `MOD_NOREPEAT`) on a `NativeWindow`; fires only while unlocked. This is the sole lock trigger in classic mode. |
+| Chord hotkey | `src/KeyboardHook.cs` | Opt-in "Alt + C + F"-style chord, detected in **both** lock states inside the hook (`CompletesChord`), since RegisterHotKey can't express multi-key chords. The completing keystroke is swallowed; earlier chord keys leak to the focused app while unlocked (documented trade-off). |
+| Toggle plumbing | `src/TrayAppContext.cs` | `ToggleLock` (400 ms debounce, since lock and unlock use the same keys) → `SetLocked`. Sets hook lock state, updates UI/tray/overlay, and starts the trial timer if unlicensed. |
+| Idle resilience | `src/TrayAppContext.cs` | A 60 s **watchdog** plus power-resume / session-unlock handlers re-arm the hotkey and (while unlocked) reinstall the hook, because Windows silently drops both after long idle or sleep. |
+
+`Ctrl + Alt + Del` cannot be blocked (Windows reserves it) and is documented as
+the always-available escape hatch.
+
+---
+
+## 5. Licensing / monetization
+
+| Piece | File | Role |
+| --- | --- | --- |
+| Abstraction | `src/Licensing/ILicenseProvider.cs` | `IsLicensed` + `ActivateAsync`, so a future Microsoft Store `StoreLicenseProvider` can drop in. |
+| Implementation | `src/Licensing/LemonSqueezyProvider.cs` | Activates a key against the Lemon Squeezy license API (one online call), then trusts the cached activation offline. |
+| Anti-handedit | same | Activation is bound with a machine-specific **HMAC-SHA256 signature** (salt in public source + key + instance id + `MachineGuid`), so editing/copying `settings.json` alone won't unlock. Honor-system by design — the source is public. |
+| Free tier | `src/TrayAppContext.cs` | Each lock **session** auto-unlocks after **30 minutes** (warning + on-badge countdown at 2 minutes remaining), then shows a buy prompt. `CATFOIL_TRIAL_SECONDS` can only **shorten** the session (for testing). |
+
+---
+
+## 6. Settings model — `src/Settings.cs`
+
+JSON at `%APPDATA%\CatFoil\settings.json` (`Keys` serialized as string flags).
+Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled`, `UseChordHotkey`
+(default off) + `ChordModifiers`/`ChordKeys`, `MinimizeToTrayOnClose`,
+`StartWithWindows`, `StartMinimized`, `ShowOverlay`, `WelcomeShown`,
+`OverlayPosition`, per-state `OverlayNormal`/`OverlayFullscreen`
+(`OverlayStateSettings`: Visible, UseCustomIcon, CustomIconFile, Size 32–256,
+ShowBackground), and license fields (`LicenseKey`, `LicenseInstanceId`,
+`LicenseSignature`). Corrupt files fall back to defaults.
+
+"Start with Windows" is an `HKCU\...\Run\CatFoil` value pointing at the current
+executable, re-applied on every launch and on save.
+
+---
+
+## 7. Feature checklist
+
+- Keyboard lock/unlock (mouse stays live); Ctrl+Alt+Del escape hatch.
+- Three ways to toggle: main-window button, tray menu, global hotkey.
+- Classic single-combo hotkey **or** opt-in multi-key chord.
+- Draggable, per-state (normal vs fullscreen) customizable overlay badge with
+  custom icons, size, and background — with live previews.
+- First-run welcome tour, re-openable from settings.
+- Start-with-Windows, start-minimized, close-to-tray options.
+- One-time license (Lemon Squeezy) removing the 30-minute free-session limit,
+  machine-bound to resist casual bypass.
+- Resilience to Windows silently dropping global input after idle/sleep.
+- Single-instance; second launch resurfaces the running one.
