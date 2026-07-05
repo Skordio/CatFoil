@@ -94,6 +94,8 @@ public sealed class KeyboardHook : IDisposable
         using ProcessModule mod = cur.MainModule!;
         _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(mod.ModuleName), 0);
         win32Error = _hookId == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+        if (HookLog.Enabled)
+            HookLog.Record(_hookId != IntPtr.Zero ? "keyboard hook installed" : $"keyboard hook install FAILED (err={win32Error})");
         return _hookId != IntPtr.Zero;
     }
 
@@ -142,6 +144,7 @@ public sealed class KeyboardHook : IDisposable
 
             if (isDown && CompletesChord(vk))
             {
+                if (HookLog.Enabled) HookLog.Record($"DOWN {vk} (vk={(int)vk}) locked={IsLocked} -> CHORD (swallow)");
                 ChordPressed?.Invoke();
                 return (IntPtr)1;   // swallow the keystroke that completed the chord
             }
@@ -150,7 +153,10 @@ public sealed class KeyboardHook : IDisposable
 
             if (IsLocked && isDown)
             {
-                if (MatchesUnlockCombo(vk))
+                bool unlock = MatchesUnlockCombo(vk);
+                if (HookLog.Enabled)
+                    HookLog.Record($"DOWN {vk} (vk={(int)vk}) locked=True -> {(unlock ? "UNLOCK" : "BLOCKED")} (swallow)");
+                if (unlock)
                     UnlockComboPressed?.Invoke();
                 else
                     BlockedKeyPress?.Invoke();
@@ -159,6 +165,9 @@ public sealed class KeyboardHook : IDisposable
                 // because we never installed a mouse hook.
                 return (IntPtr)1;
             }
+
+            if (HookLog.Enabled)
+                HookLog.Record($"{(isDown ? "DOWN" : isUp ? "UP  " : "----")} {vk} (vk={(int)vk}) locked={IsLocked} -> pass");
 
             // Key-UPs pass through even while locked. Swallowing them desyncs
             // Windows' key state: a modifier held while locking (e.g. the
