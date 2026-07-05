@@ -187,6 +187,11 @@ public sealed class TrayAppContext : ApplicationContext
         // wrongly read them as "away from the desk" and lock mid-activity.
         if (OverlayForm.ForegroundIsFullscreen()) return;
 
+        // Don't lock while the user is reading/configuring one of CatFoil's own
+        // windows (Settings, Welcome, main): they may sit still on it past the
+        // threshold, and locking mid-configuration is confusing.
+        if (OverlayForm.ForegroundIsOwnProcess()) return;
+
         uint threshold = (uint)Math.Clamp(_settings.AutoLockMinutes, 1, 120) * 60_000u;
         if (IdleTime.Milliseconds() >= threshold)
             SetLocked(true);

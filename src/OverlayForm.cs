@@ -244,6 +244,17 @@ public sealed class OverlayForm : Form
         RenderLayered();
     }
 
+    // True when the foreground window belongs to CatFoil itself (Settings,
+    // Welcome, the main window, etc.) — used to avoid auto-locking while the
+    // user is reading/configuring one of our own windows.
+    internal static bool ForegroundIsOwnProcess()
+    {
+        IntPtr fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(fg, out uint pid);
+        return pid == (uint)Environment.ProcessId;
+    }
+
     internal static bool ForegroundIsFullscreen()
     {
         IntPtr fg = GetForegroundWindow();
