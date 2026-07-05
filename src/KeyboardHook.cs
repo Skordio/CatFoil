@@ -61,8 +61,20 @@ public sealed class KeyboardHook : IDisposable
     /// <summary>Non-modifier keys of the chord. Empty disables chord mode.</summary>
     public void SetChordKeys(Keys[] keys)
     {
+        // Leave the held-key state alone when the chord is unchanged. Otherwise a
+        // re-arm (the idle watchdog re-applies settings every 60s) that lands
+        // mid-chord would clear the keys already held and drop the chord.
+        if (SameChord(keys)) return;
         _chordKeys = keys;
         _chordDown = new bool[keys.Length];
+    }
+
+    private bool SameChord(Keys[] keys)
+    {
+        if (_chordKeys.Length != keys.Length) return false;
+        for (int i = 0; i < keys.Length; i++)
+            if (_chordKeys[i] != keys[i]) return false;
+        return true;
     }
 
     // Raised from the hook callback (UI thread, but mid-hook) — handlers must
