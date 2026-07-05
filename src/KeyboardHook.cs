@@ -100,12 +100,18 @@ public sealed class KeyboardHook : IDisposable
     /// </summary>
     public bool Reinstall(out int win32Error)
     {
-        if (_hookId != IntPtr.Zero)
+        // Install the fresh hook FIRST, then drop the old one only if that
+        // succeeded. Unhooking first and then failing to re-install would leave
+        // us with no hook at all — locking would silently stop swallowing keys.
+        IntPtr old = _hookId;
+        if (!Install(out win32Error))
         {
-            UnhookWindowsHookEx(_hookId);
-            _hookId = IntPtr.Zero;
+            _hookId = old;   // keep the existing (possibly still-live) hook
+            return false;
         }
-        return Install(out win32Error);
+        if (old != IntPtr.Zero)
+            UnhookWindowsHookEx(old);
+        return true;
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
