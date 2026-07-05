@@ -6,7 +6,12 @@ Findings ranked most-significant first.
 
 ---
 
-### 1. Dueling countdowns when a timed lock outlasts the free trial (unlicensed) — [medium · correctness · CONFIRMED]
+### 1. Dueling countdowns when a timed lock outlasts the free trial (unlicensed) — [medium · correctness · FIXED]
+- **Fixed:** `LockFor` now clamps a free-tier timed lock to the remaining trial and
+  stops the trial timer, so the timed countdown is the single writer of the label/overlay
+  and the sole auto-unlock source. The buy prompt still appears on expiry when (and only
+  when) the user requested longer than the free cap (`_timedClampedByTrial`). Also
+  addresses #2 (the armed auto-unlock is now visible via the always-on countdown) and #3.
 - **File:** `src/TrayAppContext.cs:209-213` (UpdateTimedCountdown) and `:251-260` (trial warning)
 - **Failure scenario:** An unlicensed user picks "Lock for 60 minutes". The free trial
   still force-unlocks at 30 minutes, and once ≤120s of the trial remain, `TrialTick`

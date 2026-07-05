@@ -32,6 +32,9 @@ public sealed class TrayAppContext : ApplicationContext
     // Counts down a user-chosen timed lock, then auto-unlocks.
     private readonly System.Windows.Forms.Timer _timedTimer = new() { Interval = 1000 };
     private int _timedSecondsLeft;
+    // True when a timed lock had to be shortened to the free-trial cap, so its
+    // expiry should surface the buy prompt (the user asked for more than free).
+    private bool _timedClampedByTrial;
     private readonly Icon _appIcon;
 
     private SettingsForm? _settingsForm;
@@ -169,6 +172,7 @@ public sealed class TrayAppContext : ApplicationContext
             _trialTimer.Stop();
             _timedTimer.Stop();
             _timedSecondsLeft = 0;
+            _timedClampedByTrial = false;
             _hook.Unlock();
             _overlay.SetActive(false);
             _overlay.SetRemaining(null);
@@ -189,8 +193,31 @@ public sealed class TrayAppContext : ApplicationContext
     // ---------------------------------------------------------------
     private void LockFor(int minutes)
     {
-        _timedSecondsLeft = Math.Max(1, minutes) * 60;
-        if (!_hook.IsLocked) SetLocked(true);   // no-op if somehow already locked
+        int requested = Math.Max(1, minutes) * 60;
+
+        // Lock first so, for the free tier, SetLocked(true) has established the
+        // trial countdown we clamp against below.
+        if (!_hook.IsLocked) SetLocked(true);
+
+        if (_license.IsLicensed)
+        {
+            _timedSecondsLeft = requested;
+            _timedClampedByTrial = false;
+        }
+        else
+        {
+            // A free-tier timed lock can't outlast the trial cap. Clamp it so the
+            // "Auto-unlock in…" countdown is honest and can't exceed the limit.
+            int trialCap = _trialSecondsLeft > 0 ? _trialSecondsLeft : TrialDurationSeconds();
+            _timedSecondsLeft = Math.Min(requested, trialCap);
+            _timedClampedByTrial = requested > trialCap;
+        }
+
+        // The timed countdown is now the single source for the label/overlay and
+        // for auto-unlock; stop the trial's parallel countdown so the two can't
+        // fight over the same UI each second (the timed cap enforces the trial).
+        _trialTimer.Stop();
+
         _timedTimer.Start();
         UpdateTimedCountdown();
     }
@@ -200,7 +227,8 @@ public sealed class TrayAppContext : ApplicationContext
         _timedSecondsLeft--;
         if (_timedSecondsLeft <= 0)
         {
-            SetLocked(false);   // auto-unlock
+            // Show the buy prompt only if the user asked for longer than free allows.
+            SetLocked(false, expired: _timedClampedByTrial);
             return;
         }
         UpdateTimedCountdown();
