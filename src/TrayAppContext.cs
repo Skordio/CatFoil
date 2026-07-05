@@ -320,13 +320,23 @@ public sealed class TrayAppContext : ApplicationContext
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
     {
         if (e.Mode == PowerModes.Resume)
-            _mainForm.BeginInvoke(ReassertInput);
+            MarshalReassert();
     }
 
     private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e)
     {
         if (e.Reason is SessionSwitchReason.SessionUnlock or SessionSwitchReason.ConsoleConnect)
-            _mainForm.BeginInvoke(ReassertInput);
+            MarshalReassert();
+    }
+
+    // These events fire on the SystemEvents thread, so hop to the UI thread to
+    // re-arm. During shutdown one can arrive after the form's handle is gone,
+    // where BeginInvoke throws unhandled on that thread — guard and swallow it.
+    private void MarshalReassert()
+    {
+        if (!_mainForm.IsHandleCreated || _mainForm.IsDisposed) return;
+        try { _mainForm.BeginInvoke(ReassertInput); }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
     }
 
     private void ApplyStartWithWindows()
