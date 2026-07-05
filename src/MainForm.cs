@@ -22,6 +22,11 @@ public sealed class MainForm : Form
     private static readonly Size UnlockedSize = new(420, 260);
     private static readonly Size LockedSize   = new(760, 480);
 
+    // Cached so lock/unlock toggling reuses them instead of allocating (and
+    // leaking, since WinForms doesn't dispose a Font you overwrite) each time.
+    private static readonly Font ActiveFont = new("Segoe UI", 16f, FontStyle.Bold);
+    private static readonly Font LockedFont = new("Segoe UI", 18f, FontStyle.Regular);
+
     private const string LockedText =
         "The keyboard is currently locked and will not accept input\nexcept Ctrl + Alt + Delete";
 
@@ -53,7 +58,7 @@ public sealed class MainForm : Form
         // --- Status label (fills the window) ---
         _status.Dock = DockStyle.Fill;
         _status.TextAlign = ContentAlignment.MiddleCenter;
-        _status.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
+        _status.Font = ActiveFont;
         _status.ForeColor = Color.FromArgb(0, 130, 0);
         _status.Text = "Keyboard is ACTIVE";
 
@@ -128,7 +133,7 @@ public sealed class MainForm : Form
 
             Text = "CatFoil — keyboard locked";
 
-            _status.Font = new Font("Segoe UI", 18f, FontStyle.Regular);
+            _status.Font = LockedFont;
             _status.ForeColor = Color.FromArgb(60, 60, 60);
             _status.Text = LockedText;
             _toggle.Text = "Unlock Keyboard";
@@ -144,7 +149,7 @@ public sealed class MainForm : Form
 
             Text = "CatFoil";
 
-            _status.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
+            _status.Font = ActiveFont;
             _status.ForeColor = Color.FromArgb(0, 130, 0);
             _status.Text = "Keyboard is ACTIVE";
             _toggle.Text = "Lock Keyboard";
