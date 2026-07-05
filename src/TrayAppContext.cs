@@ -29,6 +29,8 @@ public sealed class TrayAppContext : ApplicationContext
     // long idle / sleep, and otherwise nothing restores them until the user
     // reopens a window. 60s keeps the vulnerable gap short without churn.
     private readonly System.Windows.Forms.Timer _inputWatchdog = new() { Interval = 60_000 };
+    // Polls system idle time to auto-lock after inactivity.
+    private readonly System.Windows.Forms.Timer _idleTimer = new() { Interval = 5000 };
     private readonly Icon _appIcon;
 
     private SettingsForm? _settingsForm;
@@ -80,6 +82,8 @@ public sealed class TrayAppContext : ApplicationContext
         // Keep global input alive across long idle and sleep (see ReassertInput).
         _inputWatchdog.Tick += (_, _) => ReassertInput();
         _inputWatchdog.Start();
+        _idleTimer.Tick += (_, _) => IdleCheck();
+        _idleTimer.Start();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
 
@@ -168,6 +172,17 @@ public sealed class TrayAppContext : ApplicationContext
                 ShowMainWindow();
             }
         }
+    }
+
+    // Auto-lock once the machine has had no keyboard/mouse input for the
+    // configured stretch. Mouse activity resets the idle clock, so simply
+    // stepping away (no input at all) triggers it; using the mouse does not.
+    private void IdleCheck()
+    {
+        if (!_settings.AutoLockEnabled || _hook.IsLocked) return;
+        uint threshold = (uint)Math.Clamp(_settings.AutoLockMinutes, 1, 120) * 60_000u;
+        if (IdleTime.Milliseconds() >= threshold)
+            SetLocked(true);
     }
 
     private void OnBlockedKey()
@@ -366,6 +381,7 @@ public sealed class TrayAppContext : ApplicationContext
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _inputWatchdog.Stop();
+        _idleTimer.Stop();
     }
 
     protected override void Dispose(bool disposing)
@@ -374,6 +390,7 @@ public sealed class TrayAppContext : ApplicationContext
         {
             DetachInputWatchdog();
             _inputWatchdog.Dispose();
+            _idleTimer.Dispose();
             _showWait?.Unregister(null);
             _tray?.Dispose();
             _hotkey.Dispose();
