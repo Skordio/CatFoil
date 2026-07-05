@@ -118,6 +118,7 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
 - **Right-click** → context menu:
   1. **Open CatFoil** (bold default) → show main window
   2. **Lock Keyboard** / **Unlock Keyboard** (label toggles with state)
+  2b. **Lock for…** submenu — 5/15/30/60 minutes, then auto-unlock
   3. **Settings…** → open the settings window
   4. — separator —
   5. **Exit** → shut the app down
@@ -184,6 +185,7 @@ on, the Run key is suppressed so they don't both launch at logon.
 - Resilience to Windows silently dropping global input after idle/sleep.
 - Optional **run-as-administrator** relaunch so the lock also covers elevated windows,
   and optional **silent elevated autostart** at logon (scheduled task, no UAC prompt).
+- **Timed lock** ("Lock for…" tray submenu) with an auto-unlock countdown.
 - Single-instance; second launch resurfaces the running one.
 
 ---
