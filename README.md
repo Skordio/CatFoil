@@ -9,16 +9,21 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 - **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. It stays out of the way of fullscreen apps (videos, games) and reappears afterwards.
 - **Blocked-key feedback**: pressing a key while locked flashes the window/overlay red, and restores the window if you'd otherwise have no way back in.
 - **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay, hide-to-tray, start hidden, start with Windows (a registry Run entry the app manages itself).
-- **One-click per-user install** (no admin): adds a Start-menu shortcut and an uninstaller. Your settings live in `%APPDATA%`, so upgrades and reinstalls keep everything.
+- **One-click installer**: choose a per-user install (no admin) or an all-users install; either way it adds a Start-menu shortcut and an uninstaller. Your settings live in `%APPDATA%`, so upgrades and reinstalls keep everything.
 
 ## Installing
 
 Download `CatFoil-Setup-<version>.exe` from the
-[Releases](https://github.com/Skordio/CatFoil/releases) page and run it. It installs
-per-user to `%LOCALAPPDATA%\Programs\CatFoil` with **no administrator prompt**, adds a
-Start-menu shortcut, and registers an uninstaller (Apps & Features → CatFoil). The app
-self-elevates only when it actually needs to block elevated windows. Uninstalling removes
-the app but keeps your settings in `%APPDATA%\CatFoil`.
+[Releases](https://github.com/Skordio/CatFoil/releases) page and run it. Setup asks how you
+want to install:
+
+- **Install for me only** (default, **no administrator prompt**) → `%LOCALAPPDATA%\Programs\CatFoil`.
+- **Install for all users** (asks for admin) → `C:\Program Files\CatFoil`.
+
+Either way it adds a Start-menu shortcut and registers an uninstaller (Apps & Features →
+CatFoil). The app self-elevates only when it actually needs to block elevated windows, so the
+per-user install can still do everything. Uninstalling removes the app but keeps your settings
+in `%APPDATA%\CatFoil`.
 
 ## How it works
 

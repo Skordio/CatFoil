@@ -229,19 +229,26 @@ per-run and would need re-enabling after each reboot.
 
 ## 9. Packaging & distribution
 
-CatFoil is distributed as a **per-user installer** wrapping a self-contained single-file
+CatFoil is distributed as an **installer** wrapping a self-contained single-file
 `CatFoil.exe`. All mutable state lives in `%APPDATA%\CatFoil` (settings, license, overlay
 icons), never next to the binary, so an uninstall leaves it intact and a reinstall/upgrade
 keeps every setting.
 
-- **Per-user installer** — `installer/CatFoil.iss` (Inno Setup 6) built by
-  `scripts/build-installer.ps1`. `PrivilegesRequired=lowest` → installs to
-  `%LOCALAPPDATA%\Programs\CatFoil` with **no UAC**, adds a Start-menu shortcut and an
-  Apps & Features uninstaller. `AppMutex=CatFoil-SingleInstance` (matching the app's
-  single-instance mutex in `src/Program.cs`) lets the installer detect and close a
-  running instance so it can replace the self-locking EXE without a reboot. The
-  `asInvoker` manifest is unchanged — the app still self-elevates on demand (§8), so
-  a no-admin install and runtime elevation coexist.
+- **Installer** — `installer/CatFoil.iss` (Inno Setup 6) built by
+  `scripts/build-installer.ps1`. `PrivilegesRequired=lowest` +
+  `PrivilegesRequiredOverridesAllowed=dialog` show a **"Select Install Mode" dialog** so the
+  user picks **per-user** (default, **no UAC**, → `%LOCALAPPDATA%\Programs\CatFoil`) or
+  **all-users** (asks for admin, → `C:\Program Files\CatFoil`); a `/VERYSILENT` install takes
+  the per-user path. `ArchitecturesInstallIn64BitMode=x64compatible` makes the per-machine
+  path land in the real 64-bit Program Files (the payload is win-x64). `{autopf}`, `{group}`,
+  and `{autodesktop}` resolve to the matching per-user/common locations automatically, so both
+  modes get a Start-menu shortcut and an Apps & Features uninstaller.
+  `AppMutex=CatFoil-SingleInstance` (matching the app's single-instance mutex in
+  `src/Program.cs`) lets the installer detect and close a running instance so it can replace
+  the self-locking EXE without a reboot. The `asInvoker` manifest is unchanged — the app still
+  self-elevates on demand (§8), so even a no-admin per-user install can block elevated windows.
+  The post-install launch uses `runasoriginaluser` so an all-users (elevated) install still
+  starts CatFoil as the normal user.
 
 The build reads the version from `<Version>` in `CatFoil.csproj` (currently `0.3.0`) so
 the EXE metadata and installer filename always match. The installer is **offline** (payload

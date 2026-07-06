@@ -1,11 +1,16 @@
-; CatFoil per-user installer (Inno Setup 6).
+; CatFoil installer (Inno Setup 6).
 ;
 ; Build via scripts\build-installer.ps1, which publishes the self-contained
 ; single-file EXE to dist\publish\ and passes /DMyAppVersion=<ver> to ISCC.
 ;
-; Per-user, no-admin install (PrivilegesRequired=lowest): lands in
-; %LOCALAPPDATA%\Programs\CatFoil. The app self-elevates at runtime only when it
-; needs to block elevated windows, so the installer itself never needs admin.
+; Install mode is the user's choice (PrivilegesRequiredOverridesAllowed=dialog):
+;   * "Install for me only"  → per-user, no admin, lands in %LOCALAPPDATA%\Programs\CatFoil.
+;   * "Install for all users" → per-machine, triggers UAC, lands in C:\Program Files\CatFoil.
+; PrivilegesRequired=lowest makes per-user the no-prompt default; a silent install
+; (/VERYSILENT) always takes the per-user path. {autopf}, {group}, {autodesktop}
+; all resolve to the matching per-user or common location automatically.
+; The app self-elevates at runtime only when it needs to block elevated windows,
+; so even a per-user install can do everything a per-machine one can.
 ; All user state (settings.json, license, overlay icons) already lives in
 ; %APPDATA%\CatFoil, independent of the install location, so an uninstall leaves
 ; it untouched and a reinstall/upgrade keeps every setting.
@@ -35,12 +40,20 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 VersionInfoVersion={#MyAppVersion}
-; {autopf} resolves to %LOCALAPPDATA%\Programs in non-admin install mode.
+; {autopf} = %LOCALAPPDATA%\Programs in per-user mode, C:\Program Files in per-machine mode.
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; Default to a no-admin per-user install, but let the user choose per-machine
+; (all-users) via the "Select Install Mode" dialog, which then elevates.
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+; 64-bit self-contained payload: install as 64-bit so {autopf} is the real
+; Program Files (not Program Files (x86)) in per-machine mode, and refuse to
+; run on non-x64-compatible Windows.
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename=CatFoil-Setup-{#MyAppVersion}
 SetupIconFile=..\assets\cat.ico
@@ -67,4 +80,6 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; runasoriginaluser: after a per-machine (elevated) install, launch CatFoil as the
+; normal user rather than elevated — it self-elevates on demand if/when needed.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
