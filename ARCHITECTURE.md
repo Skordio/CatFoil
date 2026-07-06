@@ -200,6 +200,14 @@ are out of a user-mode hook's reach:
   Never reaches any app. This is the documented escape hatch.
 - **Win + L** (lock workstation) — Windows processes this specially; low-level
   keyboard hooks generally can't suppress it. (Effect is just "PC locks.")
+- **Xbox Game Bar (Win + G)** and a handful of other shell/UWP feature shortcuts —
+  the hook *does* see and swallow these key-downs (confirmed empirically with the
+  opt-in `src/HookLog.cs` diagnostic: `DOWN LWin -> BLOCKED`, `DOWN G -> BLOCKED`),
+  yet Windows still activates the feature, because its activation is dispatched off
+  the low-level-hook path. Returning `1` from the hook cannot stop it. The only
+  reliable blocks are system-level and persistent (disabling the Game Bar app
+  entirely, or an Enterprise/IoT keyboard-filter driver), so CatFoil treats Win + G
+  as unblockable like the entries above rather than fighting it per lock.
 - **The secure desktop** — UAC prompt, lock/login screens, the Ctrl+Alt+Del menu:
   the hook doesn't run there at all.
 - **Elevated foreground windows** — a medium-integrity hook can't block keystrokes
@@ -218,3 +226,30 @@ To make elevation persist, the **Start automatically at logon, elevated** sub-op
 prompt**. Creating/removing that task needs an already-elevated process, so the
 option is only enabled once "Run as administrator" is on. Without it, elevation is
 per-run and would need re-enabling after each reboot.
+
+## 9. Packaging & distribution
+
+CatFoil ships two ways from the **same** self-contained single-file `CatFoil.exe`;
+distribution is purely a wrapper because all mutable state lives in `%APPDATA%\CatFoil`
+(settings, license, overlay icons), never next to the binary.
+
+- **Portable** — the bare `CatFoil.exe`. Run from anywhere, nothing installed.
+- **Per-user installer** — `installer/CatFoil.iss` (Inno Setup 6) built by
+  `scripts/build-installer.ps1`. `PrivilegesRequired=lowest` → installs to
+  `%LOCALAPPDATA%\Programs\CatFoil` with **no UAC**, adds a Start-menu shortcut and an
+  Apps & Features uninstaller. `AppMutex=CatFoil-SingleInstance` (matching the app's
+  single-instance mutex in `src/Program.cs`) lets the installer detect and close a
+  running instance so it can replace the self-locking EXE without a reboot. The
+  `asInvoker` manifest is unchanged — the app still self-elevates on demand (§8), so
+  a no-admin install and runtime elevation coexist. Uninstall leaves `%APPDATA%\CatFoil`
+  intact, so settings/license survive a reinstall or upgrade.
+
+The build reads the version from `<Version>` in `CatFoil.csproj` (currently `0.3.0`) so
+the EXE metadata and installer filename always match. The installer is **offline** (payload
+bundled) and **silent-capable** (`/VERYSILENT`), which are the two hard requirements for the
+Microsoft Store's **MSI/EXE submission path** — so the same installer can be listed on the
+Store without repackaging as MSIX. The remaining Store prerequisite is **code-signing** the
+setup and payload with a cert chaining to a Microsoft-Trusted-Root CA (e.g. Azure Trusted
+Signing); the Store does not auto-update MSI/EXE apps, so updates stay the app's/installer's
+responsibility. MSIX remains a separate future option for native Store in-app-purchase
+licensing (`StoreLicenseProvider`), which needs package identity the unpackaged EXE lacks.
