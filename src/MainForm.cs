@@ -28,7 +28,7 @@ public sealed class MainForm : Form
     private static readonly Font LockedFont = new("Segoe UI", 18f, FontStyle.Regular);
 
     private const string LockedText =
-        "The keyboard is currently locked and will not accept input\nexcept Ctrl + Alt + Delete";
+        "The keyboard is currently locked.";
 
     /// <summary>The lock/unlock button was clicked; TrayAppContext decides what to do.</summary>
     public event Action? ToggleRequested;
