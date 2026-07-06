@@ -39,6 +39,11 @@ public sealed class Settings
     public bool StartElevatedOnBoot { get; set; }
     public bool StartMinimized { get; set; }
     public bool ShowOverlay { get; set; } = true;
+
+    // Auto-lock the keyboard after a stretch of no keyboard/mouse input, so
+    // walking away leaves it protected without remembering to lock.
+    public bool AutoLockEnabled { get; set; }
+    public int AutoLockMinutes { get; set; } = 5;   // clamped 1..120
     public bool WelcomeShown { get; set; }
     public Point? OverlayPosition { get; set; }
 

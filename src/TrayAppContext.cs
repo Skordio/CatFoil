@@ -29,6 +29,14 @@ public sealed class TrayAppContext : ApplicationContext
     // long idle / sleep, and otherwise nothing restores them until the user
     // reopens a window. 60s keeps the vulnerable gap short without churn.
     private readonly System.Windows.Forms.Timer _inputWatchdog = new() { Interval = 60_000 };
+    // Polls system idle time to auto-lock after inactivity.
+    private readonly System.Windows.Forms.Timer _idleTimer = new() { Interval = 5000 };
+    // Counts down a user-chosen timed lock, then auto-unlocks.
+    private readonly System.Windows.Forms.Timer _timedTimer = new() { Interval = 1000 };
+    private int _timedSecondsLeft;
+    // True when a timed lock had to be shortened to the free-trial cap, so its
+    // expiry should surface the buy prompt (the user asked for more than free).
+    private bool _timedClampedByTrial;
     private readonly Icon _appIcon;
 
     private SettingsForm? _settingsForm;
@@ -77,10 +85,13 @@ public sealed class TrayAppContext : ApplicationContext
         ApplyStartupSettings();
 
         _trialTimer.Tick += (_, _) => TrialTick();
+        _timedTimer.Tick += (_, _) => TimedTick();
 
         // Keep global input alive across long idle and sleep (see ReassertInput).
         _inputWatchdog.Tick += (_, _) => ReassertInput();
         _inputWatchdog.Start();
+        _idleTimer.Tick += (_, _) => IdleCheck();
+        _idleTimer.Start();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
 
@@ -88,9 +99,17 @@ public sealed class TrayAppContext : ApplicationContext
         var openItem = new ToolStripMenuItem("Open CatFoil", null, (_, _) => ShowMainWindow());
         openItem.Font = new Font(openItem.Font, FontStyle.Bold);
 
+        var lockForItem = new ToolStripMenuItem("Lock for…");
+        foreach (int minutes in new[] { 5, 15, 30, 60 })
+        {
+            int m = minutes;   // capture
+            lockForItem.DropDownItems.Add(new ToolStripMenuItem($"{m} minutes", null, (_, _) => LockFor(m)));
+        }
+
         var menu = new ContextMenuStrip();
         menu.Items.Add(openItem);
         menu.Items.Add(_lockMenuItem);
+        menu.Items.Add(lockForItem);
         menu.Items.Add(new ToolStripMenuItem("Statistics…", null, (_, _) => ShowStats()));
         menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
@@ -160,6 +179,9 @@ public sealed class TrayAppContext : ApplicationContext
         else
         {
             _trialTimer.Stop();
+            _timedTimer.Stop();
+            _timedSecondsLeft = 0;
+            _timedClampedByTrial = false;
             _hook.Unlock();
             // Accumulate this session's locked time and persist the stats.
             long elapsed = unchecked((uint)Environment.TickCount - (uint)_lockStartTick) / 1000;
@@ -177,6 +199,82 @@ public sealed class TrayAppContext : ApplicationContext
                 ShowMainWindow();
             }
         }
+    }
+
+    // Auto-lock once the machine has had no keyboard/mouse input for the
+    // configured stretch. Mouse activity resets the idle clock, so simply
+    // stepping away (no input at all) triggers it; using the mouse does not.
+    private void IdleCheck()
+    {
+        if (!_settings.AutoLockEnabled || _hook.IsLocked) return;
+
+        // Don't lock during passive full-screen use (movies, video calls,
+        // full-screen slideshows, games): those legitimately produce no
+        // keyboard/mouse input for long stretches, so idle time alone would
+        // wrongly read them as "away from the desk" and lock mid-activity.
+        if (OverlayForm.ForegroundIsFullscreen()) return;
+
+        // Don't lock while the user is reading/configuring one of CatFoil's own
+        // windows (Settings, Welcome, main): they may sit still on it past the
+        // threshold, and locking mid-configuration is confusing.
+        if (OverlayForm.ForegroundIsOwnProcess()) return;
+
+        uint threshold = (uint)Math.Clamp(_settings.AutoLockMinutes, 1, 120) * 60_000u;
+        if (IdleTime.Milliseconds() >= threshold)
+            SetLocked(true);
+    }
+
+    // ---------------------------------------------------------------
+    // Timed lock ("Lock for N minutes", then auto-unlock)
+    // ---------------------------------------------------------------
+    private void LockFor(int minutes)
+    {
+        int requested = Math.Max(1, minutes) * 60;
+
+        // Lock first so, for the free tier, SetLocked(true) has established the
+        // trial countdown we clamp against below.
+        if (!_hook.IsLocked) SetLocked(true);
+
+        if (_license.IsLicensed)
+        {
+            _timedSecondsLeft = requested;
+            _timedClampedByTrial = false;
+        }
+        else
+        {
+            // A free-tier timed lock can't outlast the trial cap. Clamp it so the
+            // "Auto-unlock in…" countdown is honest and can't exceed the limit.
+            int trialCap = _trialSecondsLeft > 0 ? _trialSecondsLeft : TrialDurationSeconds();
+            _timedSecondsLeft = Math.Min(requested, trialCap);
+            _timedClampedByTrial = requested > trialCap;
+        }
+
+        // The timed countdown is now the single source for the label/overlay and
+        // for auto-unlock; stop the trial's parallel countdown so the two can't
+        // fight over the same UI each second (the timed cap enforces the trial).
+        _trialTimer.Stop();
+
+        _timedTimer.Start();
+        UpdateTimedCountdown();
+    }
+
+    private void TimedTick()
+    {
+        _timedSecondsLeft--;
+        if (_timedSecondsLeft <= 0)
+        {
+            // Show the buy prompt only if the user asked for longer than free allows.
+            SetLocked(false, expired: _timedClampedByTrial);
+            return;
+        }
+        UpdateTimedCountdown();
+    }
+
+    private void UpdateTimedCountdown()
+    {
+        var remaining = TimeSpan.FromSeconds(_timedSecondsLeft);
+        _mainForm.ShowLockCountdown(remaining);
+        _overlay.SetRemaining(remaining);
     }
 
     private void OnBlockedKey()
@@ -385,6 +483,7 @@ public sealed class TrayAppContext : ApplicationContext
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _inputWatchdog.Stop();
+        _idleTimer.Stop();
     }
 
     protected override void Dispose(bool disposing)
@@ -393,6 +492,8 @@ public sealed class TrayAppContext : ApplicationContext
         {
             DetachInputWatchdog();
             _inputWatchdog.Dispose();
+            _idleTimer.Dispose();
+            _timedTimer.Dispose();
             _showWait?.Unregister(null);
             _tray?.Dispose();
             _hotkey.Dispose();
