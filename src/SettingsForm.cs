@@ -17,6 +17,8 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _chkOverlay = new();
     private readonly CheckBox _chkSoundLock = new();
     private readonly CheckBox _chkSoundBlocked = new();
+    private readonly CheckBox _chkAutoLock = new();
+    private readonly NumericUpDown _numAutoLock = new();
     private readonly CheckBox _chkRunAsAdmin = new();
     private readonly CheckBox _chkStartElevatedBoot = new();
     private readonly CheckBox _chkHotkeyEnabled = new();
@@ -61,7 +63,7 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 672);
+        ClientSize = new Size(512, 752);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
@@ -158,14 +160,29 @@ public sealed class SettingsForm : Form
         _lblLicenseStatus.Location = new Point(16, 94);
         grpLicense.Controls.AddRange(new Control[] { _txtLicenseKey, _btnActivate, _lnkBuy, _lblLicenseStatus });
 
+        // --- Auto-lock ---
+        var grpAutoLock = new GroupBox { Text = "Auto-lock", Bounds = new Rectangle(12, 550, 488, 60) };
+        _chkAutoLock.Text = "Auto-lock after";
+        _chkAutoLock.AutoSize = true;
+        _chkAutoLock.Location = new Point(16, 26);
+        _chkAutoLock.Checked = settings.AutoLockEnabled;
+        _numAutoLock.Minimum = 1;
+        _numAutoLock.Maximum = 120;
+        _numAutoLock.Value = Math.Clamp(settings.AutoLockMinutes, 1, 120);
+        _numAutoLock.Bounds = new Rectangle(126, 23, 56, 27);
+        var lblMinutes = new Label { Text = "minutes of no keyboard or mouse activity", AutoSize = true, Location = new Point(190, 26) };
+        _chkAutoLock.CheckedChanged += (_, _) => _numAutoLock.Enabled = _chkAutoLock.Checked;
+        _numAutoLock.Enabled = _chkAutoLock.Checked;
+        grpAutoLock.Controls.AddRange(new Control[] { _chkAutoLock, _numAutoLock, lblMinutes });
+
         // --- Sounds ---
-        var grpSounds = new GroupBox { Text = "Sounds", Bounds = new Rectangle(12, 550, 488, 78) };
+        var grpSounds = new GroupBox { Text = "Sounds", Bounds = new Rectangle(12, 618, 488, 78) };
         AddCheck(grpSounds, _chkSoundLock, "Play a sound when locking and unlocking", 24, settings.SoundOnLockUnlock);
         AddCheck(grpSounds, _chkSoundBlocked, "Play a sound when a key is blocked while locked", 50, settings.SoundOnBlockedKey);
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 640, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 708, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -173,18 +190,18 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnApply.Text = "Apply";
-        _btnApply.Bounds = new Rectangle(233, 640, 85, 30);
+        _btnApply.Bounds = new Rectangle(233, 708, 85, 30);
         _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 640, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 708, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 640, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 708, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
 
-        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, grpSounds, _btnWelcome, _btnApply, _btnSave, _btnCancel });
+        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, grpAutoLock, grpSounds, _btnWelcome, _btnApply, _btnSave, _btnCancel });
         RefreshLicenseStatus(null);
     }
 
@@ -421,6 +438,8 @@ public sealed class SettingsForm : Form
         _settings.ShowOverlay = _chkOverlay.Checked;
         _settings.SoundOnLockUnlock = _chkSoundLock.Checked;
         _settings.SoundOnBlockedKey = _chkSoundBlocked.Checked;
+        _settings.AutoLockEnabled = _chkAutoLock.Checked;
+        _settings.AutoLockMinutes = (int)_numAutoLock.Value;
         _settings.HotkeyEnabled = _chkHotkeyEnabled.Checked;
         _settings.Hotkey = _hotkey;
         _settings.UseChordHotkey = _chkChord.Checked;

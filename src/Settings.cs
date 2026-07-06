@@ -43,6 +43,11 @@ public sealed class Settings
     // Optional audio cues (uses the user's Windows system sounds).
     public bool SoundOnLockUnlock { get; set; }
     public bool SoundOnBlockedKey { get; set; }
+
+    // Auto-lock the keyboard after a stretch of no keyboard/mouse input, so
+    // walking away leaves it protected without remembering to lock.
+    public bool AutoLockEnabled { get; set; }
+    public int AutoLockMinutes { get; set; } = 5;   // clamped 1..120
     public bool WelcomeShown { get; set; }
     public Point? OverlayPosition { get; set; }
 
