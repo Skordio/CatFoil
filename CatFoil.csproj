@@ -9,6 +9,11 @@
     <AssemblyName>CatFoil</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>assets\cat.ico</ApplicationIcon>
+    <Version>0.3.0</Version>
+    <FileVersion>0.3.0.0</FileVersion>
+    <Company>Skordio</Company>
+    <Product>CatFoil</Product>
+    <Copyright>© 2026 Steven (Skordio)</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
