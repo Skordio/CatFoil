@@ -1,7 +1,7 @@
 # CatFoil — Architecture & Feature Reference
 
 CatFoil is a Windows tray utility that **locks the keyboard while leaving the mouse
-working** — so a cat walking across the desk can't type. It is a portable,
+working** — so a cat walking across the desk can't type. It is a per-user installed,
 single-file WinForms app on .NET 8 (`net8.0-windows`), with no external NuGet
 dependencies. Settings live in `%APPDATA%\CatFoil\settings.json`.
 
@@ -29,9 +29,9 @@ The app is **tray-first**: closing the main window hides it to the tray (unless
 ### 2.1 Main window — `src/MainForm.cs`
 The central lock/unlock surface. Two visual states:
 
-- **Unlocked** (420×260): large green "Keyboard is ACTIVE" status.
+- **Unlocked** (420×260): large green "Keyboard is unlocked." status.
 - **Locked** (760×480, re-centered): calm gray message —
-  *"The keyboard is currently locked and will not accept input except Ctrl + Alt + Delete"* —
+  *"The keyboard is currently locked."* —
   and the toggle button reads **Unlock Keyboard**.
 
 Persistent controls:
@@ -229,11 +229,11 @@ per-run and would need re-enabling after each reboot.
 
 ## 9. Packaging & distribution
 
-CatFoil ships two ways from the **same** self-contained single-file `CatFoil.exe`;
-distribution is purely a wrapper because all mutable state lives in `%APPDATA%\CatFoil`
-(settings, license, overlay icons), never next to the binary.
+CatFoil is distributed as a **per-user installer** wrapping a self-contained single-file
+`CatFoil.exe`. All mutable state lives in `%APPDATA%\CatFoil` (settings, license, overlay
+icons), never next to the binary, so an uninstall leaves it intact and a reinstall/upgrade
+keeps every setting.
 
-- **Portable** — the bare `CatFoil.exe`. Run from anywhere, nothing installed.
 - **Per-user installer** — `installer/CatFoil.iss` (Inno Setup 6) built by
   `scripts/build-installer.ps1`. `PrivilegesRequired=lowest` → installs to
   `%LOCALAPPDATA%\Programs\CatFoil` with **no UAC**, adds a Start-menu shortcut and an
@@ -241,8 +241,7 @@ distribution is purely a wrapper because all mutable state lives in `%APPDATA%\C
   single-instance mutex in `src/Program.cs`) lets the installer detect and close a
   running instance so it can replace the self-locking EXE without a reboot. The
   `asInvoker` manifest is unchanged — the app still self-elevates on demand (§8), so
-  a no-admin install and runtime elevation coexist. Uninstall leaves `%APPDATA%\CatFoil`
-  intact, so settings/license survive a reinstall or upgrade.
+  a no-admin install and runtime elevation coexist.
 
 The build reads the version from `<Version>` in `CatFoil.csproj` (currently `0.3.0`) so
 the EXE metadata and installer filename always match. The installer is **offline** (payload

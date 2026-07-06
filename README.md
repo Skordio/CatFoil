@@ -9,19 +9,16 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 - **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. It stays out of the way of fullscreen apps (videos, games) and reappears afterwards.
 - **Blocked-key feedback**: pressing a key while locked flashes the window/overlay red, and restores the window if you'd otherwise have no way back in.
 - **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay, hide-to-tray, start hidden, start with Windows (a registry Run entry the app manages itself).
-- **Install or run portable**: a one-click per-user installer (no admin) that adds a Start-menu shortcut and an uninstaller — or just run the single self-contained EXE with nothing installed. Your settings live in `%APPDATA%` either way, so switching between them keeps everything.
+- **One-click per-user install** (no admin): adds a Start-menu shortcut and an uninstaller. Your settings live in `%APPDATA%`, so upgrades and reinstalls keep everything.
 
 ## Installing
 
-**Option 1 — Installer (recommended).** Download `CatFoil-Setup-<version>.exe` from the
+Download `CatFoil-Setup-<version>.exe` from the
 [Releases](https://github.com/Skordio/CatFoil/releases) page and run it. It installs
 per-user to `%LOCALAPPDATA%\Programs\CatFoil` with **no administrator prompt**, adds a
 Start-menu shortcut, and registers an uninstaller (Apps & Features → CatFoil). The app
 self-elevates only when it actually needs to block elevated windows. Uninstalling removes
 the app but keeps your settings in `%APPDATA%\CatFoil`.
-
-**Option 2 — Portable.** Download the standalone `CatFoil.exe` and run it from anywhere;
-nothing is installed. Same app, same settings location.
 
 ## How it works
 
@@ -61,15 +58,8 @@ dotnet build                 # debug build → bin/Debug/net8.0-windows/CatFoil.
 dotnet build -c Release      # release build → bin/Release/net8.0-windows/CatFoil.exe
 ```
 
-To produce a self-contained single-file executable that runs on machines without .NET installed:
-
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
-```
-
-The output lands in `bin/Release/net8.0-windows/win-x64/publish/CatFoil.exe`.
-
-To build the **per-user installer**, install [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+To build the **per-user installer** (the way CatFoil is distributed), install
+[Inno Setup 6](https://jrsoftware.org/isinfo.php)
 (`winget install JRSoftware.InnoSetup`) and run:
 
 ```powershell

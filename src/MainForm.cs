@@ -60,7 +60,7 @@ public sealed class MainForm : Form
         _status.TextAlign = ContentAlignment.MiddleCenter;
         _status.Font = ActiveFont;
         _status.ForeColor = Color.FromArgb(0, 130, 0);
-        _status.Text = "Keyboard is ACTIVE";
+        _status.Text = "Keyboard is unlocked.";
 
         // --- Buy-a-license link (only shown for trial countdown / expiry) ---
         _buyLink.Dock = DockStyle.Top;
@@ -151,7 +151,7 @@ public sealed class MainForm : Form
 
             _status.Font = ActiveFont;
             _status.ForeColor = Color.FromArgb(0, 130, 0);
-            _status.Text = "Keyboard is ACTIVE";
+            _status.Text = "Keyboard is unlocked.";
             _toggle.Text = "Lock Keyboard";
             _buyLink.Visible = false;
             ResumeLayout();
