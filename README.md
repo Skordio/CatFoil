@@ -9,13 +9,17 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 - **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. It stays out of the way of fullscreen apps (videos, games) and reappears afterwards.
 - **Blocked-key feedback**: pressing a key while locked flashes the window/overlay red, and restores the window if you'd otherwise have no way back in.
 - **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay, hide-to-tray, start hidden, start with Windows (a registry Run entry the app manages itself).
-- **One-click installer**: choose a per-user install (no admin) or an all-users install; either way it adds a Start-menu shortcut and an uninstaller. Your settings live in `%APPDATA%`, so upgrades and reinstalls keep everything.
+- **Two ways to get it**: a **portable** single-file EXE that runs with no install, or a **one-click installer** (per-user with no admin, or all-users) that adds a Start-menu shortcut and an uninstaller. Either way your settings live in `%APPDATA%`, so switching formats, upgrading, or reinstalling keeps everything.
 
 ## Installing
 
-Download `CatFoil-Setup-<version>.exe` from the
-[Releases](https://github.com/Skordio/CatFoil/releases) page and run it. Setup asks how you
-want to install:
+Every release on the [Releases](https://github.com/Skordio/CatFoil/releases) page ships in two
+formats — pick whichever you prefer:
+
+**Portable** — download `CatFoil-<version>-portable.exe` and run it. No install, no admin, nothing
+to uninstall; just delete the EXE when you're done. Your settings still live in `%APPDATA%\CatFoil`.
+
+**Installer** — download `CatFoil-Setup-<version>.exe` and run it. Setup asks how you want to install:
 
 - **Install for me only** (default, **no administrator prompt**) → `%LOCALAPPDATA%\Programs\CatFoil`.
 - **Install for all users** (asks for admin) → `C:\Program Files\CatFoil`.
@@ -23,7 +27,7 @@ want to install:
 Either way it adds a Start-menu shortcut and registers an uninstaller (Apps & Features →
 CatFoil). The app self-elevates only when it actually needs to block elevated windows, so the
 per-user install can still do everything. Uninstalling removes the app but keeps your settings
-in `%APPDATA%\CatFoil`.
+in `%APPDATA%\CatFoil`. (CatFoil is also headed to the Microsoft Store via the installer.)
 
 ## How it works
 
@@ -63,19 +67,22 @@ dotnet build                 # debug build → bin/Debug/net8.0-windows/CatFoil.
 dotnet build -c Release      # release build → bin/Release/net8.0-windows/CatFoil.exe
 ```
 
-To build the **per-user installer** (the way CatFoil is distributed), install
+To build the distributable artifacts, install
 [Inno Setup 6](https://jrsoftware.org/isinfo.php)
-(`winget install JRSoftware.InnoSetup`) and run:
+(`winget install JRSoftware.InnoSetup`) and run one of the build scripts:
 
 ```powershell
-.\scripts\build-installer.ps1
+.\scripts\build-release.ps1     # both formats from a single publish (use this for a release)
+.\scripts\build-portable.ps1    # just dist\CatFoil-<version>-portable.exe
+.\scripts\build-installer.ps1   # just dist\CatFoil-Setup-<version>.exe
 ```
 
-It publishes the self-contained single-file EXE and compiles `installer\CatFoil.iss` into
-`dist\CatFoil-Setup-<version>.exe` (version comes from `<Version>` in `CatFoil.csproj`).
-The installer is offline and supports silent install (`/VERYSILENT`), so it's ready for the
-Microsoft Store's MSI/EXE submission path — that path additionally requires code-signing the
-setup and payload with a Microsoft-Trusted-Root cert.
+All three publish the same self-contained single-file EXE (version comes from `<Version>` in
+`CatFoil.csproj`); `build-release.ps1` publishes once and emits both the portable EXE and the
+installer, so they're guaranteed to be the same binary. The installer (`installer\CatFoil.iss`)
+is offline and supports silent install (`/VERYSILENT`), so it's ready for the Microsoft Store's
+MSI/EXE submission path — that path additionally requires code-signing the setup and payload with
+a Microsoft-Trusted-Root cert.
 
 ### Dev tips
 
@@ -98,5 +105,8 @@ setup and payload with a Microsoft-Trusted-Root cert.
 | `assets/cat.ico` | Placeholder cat icon (EXE, tray, overlay) — replace with real art anytime. |
 | `CatFoil.csproj` | SDK-style project file (WinForms, `net8.0-windows`, no external dependencies). |
 | `app.manifest` | Requests `asInvoker` (no UAC prompt). |
-| `installer/CatFoil.iss` | Inno Setup script — per-user, no-admin installer, Store-ready (offline + silent). |
+| `installer/CatFoil.iss` | Inno Setup script — per-user/all-users installer, Store-ready (offline + silent). |
+| `scripts/_common.ps1` | Shared build helpers (publish, version, locate ISCC) dot-sourced by the build scripts. |
+| `scripts/build-release.ps1` | Publishes once and emits both the portable EXE and the installer to `dist/`. |
+| `scripts/build-portable.ps1` | Publishes the portable single-file EXE to `dist/`. |
 | `scripts/build-installer.ps1` | Publishes the single-file EXE and compiles the installer to `dist/`. |

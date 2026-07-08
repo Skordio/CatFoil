@@ -1,8 +1,8 @@
 # CatFoil — Architecture & Feature Reference
 
 CatFoil is a Windows tray utility that **locks the keyboard while leaving the mouse
-working** — so a cat walking across the desk can't type. It is a per-user installed,
-single-file WinForms app on .NET 8 (`net8.0-windows`), with no external NuGet
+working** — so a cat walking across the desk can't type. It ships as a portable or
+installed single-file WinForms app on .NET 8 (`net8.0-windows`), with no external NuGet
 dependencies. Settings live in `%APPDATA%\CatFoil\settings.json`.
 
 This document maps every window, menu, and feature, and how the pieces fit
@@ -229,10 +229,15 @@ per-run and would need re-enabling after each reboot.
 
 ## 9. Packaging & distribution
 
-CatFoil is distributed as an **installer** wrapping a self-contained single-file
-`CatFoil.exe`. All mutable state lives in `%APPDATA%\CatFoil` (settings, license, overlay
-icons), never next to the binary, so an uninstall leaves it intact and a reinstall/upgrade
-keeps every setting.
+CatFoil ships in **two formats every release**, both built from the same self-contained
+single-file `CatFoil.exe`: a **portable** EXE (no install) and an **installer**. All mutable
+state lives in `%APPDATA%\CatFoil` (settings, license, overlay icons), never next to the
+binary, so the two formats share settings on one machine, an uninstall leaves state intact, and
+switching format / reinstalling / upgrading keeps every setting. The **installer** is the
+artifact destined for the Microsoft Store; the portable is a GitHub-Releases-only download.
+
+- **Portable** — `scripts/build-portable.ps1` publishes the single-file EXE and copies it out as
+  `dist/CatFoil-<ver>-portable.exe`. It runs directly with no admin and nothing to uninstall.
 
 - **Installer** — `installer/CatFoil.iss` (Inno Setup 6) built by
   `scripts/build-installer.ps1`. `PrivilegesRequired=lowest` +
@@ -250,8 +255,11 @@ keeps every setting.
   The post-install launch uses `runasoriginaluser` so an all-users (elevated) install still
   starts CatFoil as the normal user.
 
-The build reads the version from `<Version>` in `CatFoil.csproj` (currently `0.3.0`) so
-the EXE metadata and installer filename always match. The installer is **offline** (payload
+The build scripts share `scripts/_common.ps1` (publish, version, locate ISCC), and
+`scripts/build-release.ps1` — the per-release command — publishes **once** and emits both the
+portable EXE and the installer, so the two are byte-for-byte the same binary and can never
+drift. The version comes from `<Version>` in `CatFoil.csproj` (currently `0.3.0`) so the EXE
+metadata and every artifact filename always match. The installer is **offline** (payload
 bundled) and **silent-capable** (`/VERYSILENT`), which are the two hard requirements for the
 Microsoft Store's **MSI/EXE submission path** — so the same installer can be listed on the
 Store without repackaging as MSIX. The remaining Store prerequisite is **code-signing** the
