@@ -61,7 +61,7 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 648);
+        ClientSize = new Size(512, 690);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
@@ -159,23 +159,37 @@ public sealed class SettingsForm : Form
         grpLicense.Controls.AddRange(new Control[] { _txtLicenseKey, _btnActivate, _lnkBuy, _lblLicenseStatus });
 
         // --- Auto-lock ---
-        var grpAutoLock = new GroupBox { Text = "Auto-lock", Bounds = new Rectangle(12, 550, 488, 60) };
+        // Two rows so nothing overlaps: "Auto-lock after [n] minutes" on the first
+        // line, the "of no keyboard or mouse activity" qualifier beneath it. The
+        // selector and the "minutes" label are placed from the checkbox's *measured*
+        // width (not a hardcoded x), so the AutoSize "Auto-lock after" text can never
+        // sit on top of the selector.
+        var grpAutoLock = new GroupBox { Text = "Auto-lock", Bounds = new Rectangle(12, 550, 488, 88) };
         _chkAutoLock.Text = "Auto-lock after";
         _chkAutoLock.AutoSize = true;
+        _chkAutoLock.Font = Font;                 // pin the form font so PreferredSize measures correctly
         _chkAutoLock.Location = new Point(16, 26);
         _chkAutoLock.Checked = settings.AutoLockEnabled;
         _numAutoLock.Minimum = 1;
         _numAutoLock.Maximum = 120;
         _numAutoLock.Value = Math.Clamp(settings.AutoLockMinutes, 1, 120);
-        _numAutoLock.Bounds = new Rectangle(126, 23, 56, 27);
-        var lblMinutes = new Label { Text = "minutes of no keyboard or mouse activity", AutoSize = true, Location = new Point(190, 26) };
+        int autoLockNumX = _chkAutoLock.Location.X + _chkAutoLock.PreferredSize.Width + 6;
+        _numAutoLock.Bounds = new Rectangle(autoLockNumX, 23, 56, 27);
+        var lblMinutes = new Label { Text = "minutes", AutoSize = true, Location = new Point(autoLockNumX + 56 + 6, 26) };
+        var lblAutoLockDetail = new Label
+        {
+            Text = "of no keyboard or mouse activity",
+            AutoSize = true,
+            ForeColor = Color.Gray,
+            Location = new Point(16, 58),
+        };
         _chkAutoLock.CheckedChanged += (_, _) => _numAutoLock.Enabled = _chkAutoLock.Checked;
         _numAutoLock.Enabled = _chkAutoLock.Checked;
-        grpAutoLock.Controls.AddRange(new Control[] { _chkAutoLock, _numAutoLock, lblMinutes });
+        grpAutoLock.Controls.AddRange(new Control[] { _chkAutoLock, _numAutoLock, lblMinutes, lblAutoLockDetail });
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 616, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 650, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -183,13 +197,13 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnApply.Text = "Apply";
-        _btnApply.Bounds = new Rectangle(233, 616, 85, 30);
+        _btnApply.Bounds = new Rectangle(233, 650, 85, 30);
         _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 616, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 650, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 616, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 650, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
