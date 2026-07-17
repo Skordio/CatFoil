@@ -17,6 +17,29 @@ public static class OverlayRenderer
     private static readonly Color CountdownColor = Color.FromArgb(255, 180, 70);
     private static readonly Color FlashColor = Color.FromArgb(220, 60, 60);
 
+    private static readonly StringFormat CenterFormat = new()
+    {
+        Alignment = StringAlignment.Center,
+        LineAlignment = StringAlignment.Center,
+    };
+
+    // The countdown font depends only on the badge width, which rarely changes,
+    // but Draw runs every second while the timer is visible. Cache it by size so
+    // we don't build and throw away a Font each tick. Callers are all UI-thread.
+    private static Font? _countdownFont;
+    private static float _countdownFontSize = -1f;
+
+    private static Font CountdownFont(float emSize)
+    {
+        if (_countdownFont is null || _countdownFontSize != emSize)
+        {
+            _countdownFont?.Dispose();
+            _countdownFont = new Font("Segoe UI", emSize, FontStyle.Bold);
+            _countdownFontSize = emSize;
+        }
+        return _countdownFont;
+    }
+
     /// <summary>Corner radius as a fraction of the badge size (matches the old 16/64).</summary>
     public static int CornerRadius(int size) => Math.Max(4, size / 4);
 
@@ -49,15 +72,10 @@ public static class OverlayRenderer
         {
             // GDI+ DrawString (not GDI TextRenderer) so the glyphs carry an
             // alpha channel — required to show up on the layered overlay window.
-            using var font = new Font("Segoe UI", Math.Max(7f, bounds.Width / 6.4f), FontStyle.Bold);
+            Font font = CountdownFont(Math.Max(7f, bounds.Width / 6.4f));
             using var brush = new SolidBrush(CountdownColor);
-            using var fmt = new StringFormat
-            {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center,
-            };
             var textRect = new RectangleF(bounds.Left, iconRect.Bottom, bounds.Width, bounds.Bottom - iconRect.Bottom);
-            g.DrawString(remainingText, font, brush, textRect, fmt);
+            g.DrawString(remainingText, font, brush, textRect, CenterFormat);
         }
 
         if (flashOn)

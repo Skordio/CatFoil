@@ -24,6 +24,10 @@ public sealed class MainForm : Form
     // leaking, since WinForms doesn't dispose a Font you overwrite) each time.
     private static readonly Font ActiveFont = new("Segoe UI", 16f, FontStyle.Bold);
     private static readonly Font LockedFont = new("Segoe UI", 18f, FontStyle.Regular);
+    // Same reasoning for the fixed control fonts: WinForms never disposes a Font
+    // assigned to a control's .Font, so shared statics avoid a per-form leak.
+    private static readonly Font ToggleFont = new("Segoe UI", 14f, FontStyle.Bold);
+    private static readonly Font ButtonFont = new("Segoe UI", 10f);
 
     private const string LockedText =
         "The keyboard is currently locked.";
@@ -63,7 +67,7 @@ public sealed class MainForm : Form
         // --- Toggle button (docked to the bottom, big enough to mouse-click) ---
         _toggle.Dock = DockStyle.Bottom;
         _toggle.Height = 64;
-        _toggle.Font = new Font("Segoe UI", 14f, FontStyle.Bold);
+        _toggle.Font = ToggleFont;
         _toggle.Text = "Lock Keyboard";
         _toggle.Click += (_, _) => ToggleRequested?.Invoke();
         // Stop the button from grabbing keyboard focus / space-bar activation.
@@ -73,7 +77,7 @@ public sealed class MainForm : Form
         _exitButton.Text = "Exit";
         _exitButton.Size = new Size(104, 40);
         _exitButton.Location = new Point(12, 10);
-        _exitButton.Font = new Font("Segoe UI", 10f);
+        _exitButton.Font = ButtonFont;
         _exitButton.BackColor = Color.FromArgb(250, 228, 226);   // soft red tint
         _exitButton.ForeColor = Color.FromArgb(140, 35, 35);
         _exitButton.TabStop = false;
@@ -82,7 +86,7 @@ public sealed class MainForm : Form
         _settingsButton.Text = "Settings";
         _settingsButton.Size = new Size(104, 40);
         _settingsButton.Location = new Point(12 + 104 + 8, 10);
-        _settingsButton.Font = new Font("Segoe UI", 10f);
+        _settingsButton.Font = ButtonFont;
         _settingsButton.TabStop = false;
         _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
 

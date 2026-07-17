@@ -7,6 +7,8 @@ namespace CatFoil;
 
 public sealed class SettingsForm : Form
 {
+    private static readonly Font DialogFont = new("Segoe UI", 9.5f);
+
     private readonly Settings _settings;
 
     private readonly CheckBox _chkTrayOnClose = new();
@@ -55,7 +57,7 @@ public sealed class SettingsForm : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(512, 548);
-        Font = new Font("Segoe UI", 9.5f);
+        Font = DialogFont;
 
         // --- General ---
         var grpGeneral = new GroupBox { Text = "General", Bounds = new Rectangle(12, 12, 488, 244) };
@@ -92,7 +94,8 @@ public sealed class SettingsForm : Form
         _chkStartElevatedBoot.Text = "Start automatically at logon, elevated (no prompt)";
         _chkStartElevatedBoot.AutoSize = true;
         _chkStartElevatedBoot.Location = new Point(36, 210);   // indented under Run-as-admin
-        _chkStartElevatedBoot.Checked = Startup.TaskExists();
+        // Whether the task exists is answered by spawning schtasks.exe — too slow to
+        // block the window's construction on, so it's queried off-thread in OnLoad.
         _chkStartElevatedBoot.Enabled = elevated;
         _tip.SetToolTip(_chkStartElevatedBoot, elevated
             ? "Creates a Windows scheduled task so CatFoil starts with administrator rights at\n" +
@@ -182,6 +185,22 @@ public sealed class SettingsForm : Form
         CancelButton = _btnCancel;
 
         Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpAutoLock, _btnWelcome, _btnApply, _btnSave, _btnCancel });
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+
+        // Reflect the current elevated-startup task state without blocking the
+        // message pump: schtasks.exe can take tens of ms (longer under load), so
+        // query it on the thread pool and marshal the result back to the checkbox.
+        System.Threading.Tasks.Task.Run(() => Startup.TaskExists())
+            .ContinueWith(t =>
+            {
+                if (IsDisposed || !IsHandleCreated) return;
+                try { BeginInvoke(() => SetElevatedBootChecked(t.Result)); }
+                catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+            }, System.Threading.Tasks.TaskScheduler.Default);
     }
 
     private static void AddCheck(GroupBox parent, CheckBox check, string text, int y, bool value)
@@ -392,5 +411,14 @@ public sealed class SettingsForm : Form
         _settings.Save();
 
         SettingsSaved?.Invoke();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        // ToolTip is a handle-backed component and isn't parented to the form, so
+        // Form.Dispose won't reach it — release it explicitly. (DialogFont is a
+        // shared static and is intentionally not disposed.)
+        if (disposing) _tip.Dispose();
+        base.Dispose(disposing);
     }
 }

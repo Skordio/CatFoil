@@ -87,14 +87,16 @@ internal static class Startup
     {
         try
         {
+            // Don't redirect the streams: we discard the output anyway, and an
+            // undrained pipe deadlocks the child once it fills (~4 KB), which
+            // would hang us for the whole timeout. CreateNoWindow alone keeps the
+            // console hidden.
             using var p = Process.Start(new ProcessStartInfo
             {
                 FileName = "schtasks.exe",
                 Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
             });
             if (p is null) return -1;
             if (!p.WaitForExit(10000)) return -1;

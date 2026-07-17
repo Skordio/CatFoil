@@ -10,6 +10,13 @@ namespace CatFoil;
 /// </summary>
 public sealed class WelcomeForm : Form
 {
+    // Shared so re-opening the tour (Settings → "Welcome tour…") doesn't leak a
+    // fresh handle each time — WinForms never disposes a Font set on a control.
+    private static readonly Font FormFont = new("Segoe UI", 9.75f);
+    private static readonly Font ButtonFont = new("Segoe UI", 11f, FontStyle.Bold);
+    private static readonly Font TitleFont = new("Segoe UI", 15f, FontStyle.Bold);
+    private static readonly Font HeaderFont = new("Segoe UI", 10.5f, FontStyle.Bold);
+
     public WelcomeForm(Settings settings)
     {
         Text = "Welcome to CatFoil";
@@ -19,7 +26,7 @@ public sealed class WelcomeForm : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(520, 540);
-        Font = new Font("Segoe UI", 9.75f);
+        Font = FormFont;
         BackColor = Color.FromArgb(245, 245, 245);
 
         string hotkey = string.Join(" + ", SettingsForm.ActiveHotkeyParts(settings));
@@ -62,7 +69,7 @@ public sealed class WelcomeForm : Form
             Text = "Get started",
             Dock = DockStyle.Bottom,
             Height = 48,
-            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+            Font = ButtonFont,
             DialogResult = DialogResult.OK,
             TabStop = false,
         };
@@ -84,7 +91,7 @@ public sealed class WelcomeForm : Form
         {
             Text = text,
             AutoSize = true,
-            Font = new Font("Segoe UI", 15f, FontStyle.Bold),
+            Font = TitleFont,
             Margin = new Padding(0, 0, 0, 4),
         });
 
@@ -93,7 +100,7 @@ public sealed class WelcomeForm : Form
         {
             Text = text,
             AutoSize = true,
-            Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+            Font = HeaderFont,
             Margin = new Padding(0, 10, 0, 2),
         });
 

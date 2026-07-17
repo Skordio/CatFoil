@@ -78,8 +78,11 @@ public sealed class TrayAppContext : ApplicationContext
         // Keep global input alive across long idle and sleep (see ReassertInput).
         _inputWatchdog.Tick += (_, _) => ReassertInput();
         _inputWatchdog.Start();
+        // The idle poll only matters for auto-lock; leave it stopped otherwise so
+        // the process isn't woken every 5s to do nothing. ApplyIdleTimer keeps it
+        // in sync with the setting here and after every save.
         _idleTimer.Tick += (_, _) => IdleCheck();
-        _idleTimer.Start();
+        ApplyIdleTimer();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
 
@@ -189,6 +192,13 @@ public sealed class TrayAppContext : ApplicationContext
             SetLocked(true);
     }
 
+    // Run the 5s idle poll only while auto-lock is on.
+    private void ApplyIdleTimer()
+    {
+        if (_settings.AutoLockEnabled) _idleTimer.Start();
+        else _idleTimer.Stop();
+    }
+
     // ---------------------------------------------------------------
     // Timed lock ("Lock for N minutes", then auto-unlock)
     // ---------------------------------------------------------------
@@ -269,6 +279,7 @@ public sealed class TrayAppContext : ApplicationContext
             _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
             if (_hook.IsLocked)
                 _overlay.SetActive(_settings.ShowOverlay);
+            ApplyIdleTimer();
         };
         // The elevated relaunch is already running; quit so it can take over.
         _settingsForm.RestartElevatedRequested += ExitApp;

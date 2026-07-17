@@ -13,6 +13,10 @@ namespace CatFoil;
 /// </summary>
 public sealed class OverlaySettingsForm : Form
 {
+    // Shared so re-opening "Customize overlay…" doesn't leak a font handle each
+    // time (WinForms never disposes a Font assigned to a control).
+    private static readonly Font DialogFont = new("Segoe UI", 9.5f);
+
     private readonly Settings _settings;
     private readonly Bitmap _defaultIcon;
     private readonly StateEditor _normalEditor;
@@ -23,7 +27,8 @@ public sealed class OverlaySettingsForm : Form
     public OverlaySettingsForm(Settings settings, Icon appIcon)
     {
         _settings = settings;
-        _defaultIcon = new Icon(appIcon, 256, 256).ToBitmap();
+        using (var sized = new Icon(appIcon, 256, 256))
+            _defaultIcon = sized.ToBitmap();
 
         Text = "Overlay Appearance";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -32,7 +37,7 @@ public sealed class OverlaySettingsForm : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(652, 746);
-        Font = new Font("Segoe UI", 9.5f);
+        Font = DialogFont;
 
         var intro = new Label
         {
@@ -265,6 +270,12 @@ public sealed class OverlaySettingsForm : Form
     /// <summary>A checkerboard-backed preview that paints exactly like the overlay.</summary>
     private sealed class PreviewBox : Control
     {
+        // Constant colors — hoisted out of OnPaint so dragging the size slider
+        // (which repaints on every Scroll tick) doesn't reallocate them each frame.
+        private static readonly SolidBrush LightCell = new(Color.FromArgb(235, 235, 235));
+        private static readonly SolidBrush DarkCell = new(Color.FromArgb(210, 210, 210));
+        private static readonly Pen BorderPen = new(Color.FromArgb(180, 180, 180));
+
         private OverlayStateSettings _state = new();
         private Bitmap? _icon;
 
@@ -287,17 +298,12 @@ public sealed class OverlaySettingsForm : Form
 
             // Checkerboard so "no background" reads as transparency.
             const int cell = 10;
-            using (var light = new SolidBrush(Color.FromArgb(235, 235, 235)))
-            using (var dark = new SolidBrush(Color.FromArgb(210, 210, 210)))
-            {
-                g.FillRectangle(light, ClientRectangle);
-                for (int y = 0; y < Height; y += cell)
-                    for (int x = 0; x < Width; x += cell)
-                        if (((x / cell) + (y / cell)) % 2 == 0)
-                            g.FillRectangle(dark, x, y, cell, cell);
-            }
-            using (var border = new Pen(Color.FromArgb(180, 180, 180)))
-                g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+            g.FillRectangle(LightCell, ClientRectangle);
+            for (int y = 0; y < Height; y += cell)
+                for (int x = 0; x < Width; x += cell)
+                    if (((x / cell) + (y / cell)) % 2 == 0)
+                        g.FillRectangle(DarkCell, x, y, cell, cell);
+            g.DrawRectangle(BorderPen, 0, 0, Width - 1, Height - 1);
 
             if (_icon is null || !_state.Visible) return;
 

@@ -72,6 +72,16 @@ public sealed class OverlayForm : Form
     private OverlayStateSettings _currentState = new();
     private Bitmap? _currentIcon;
 
+    // What the last RenderLayered() actually painted. The 1s poll has to run to
+    // notice a fullscreen app appearing, but re-compositing a layered window is
+    // a bitmap allocation plus a DWM update — far too expensive to repeat every
+    // second for a badge that almost never changes. Render only on a real change.
+    private OverlayStateSettings? _paintedState;
+    private Bitmap? _paintedIcon;
+    private Size _paintedSize;
+    private string? _paintedText;
+    private bool _paintedFlash;
+
     private bool _dragging;
     private bool _moved;
     private Point _dragStartCursor;
@@ -82,7 +92,8 @@ public sealed class OverlayForm : Form
 
     public OverlayForm(Icon appIcon)
     {
-        _defaultIcon = new Icon(appIcon, 256, 256).ToBitmap();
+        using (var sized = new Icon(appIcon, 256, 256))
+            _defaultIcon = sized.ToBitmap();
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -200,7 +211,7 @@ public sealed class OverlayForm : Form
     public void SetRemaining(TimeSpan? remaining)
     {
         _remainingText = remaining?.ToString(@"m\:ss");
-        if (Visible) RenderLayered();
+        if (Visible) RenderIfChanged();
     }
 
     public void FlashBlockedKey()
@@ -208,13 +219,13 @@ public sealed class OverlayForm : Form
         if (!Visible || _flashTimer.Enabled) return;
         _flashTicks = 4;
         _flashTimer.Start();
-        RenderLayered();
+        RenderIfChanged();
     }
 
     private void FlashTick()
     {
         if (--_flashTicks <= 0) _flashTimer.Stop();
-        RenderLayered();
+        RenderIfChanged();
     }
 
     private void UpdateVisibility()
@@ -226,7 +237,11 @@ public sealed class OverlayForm : Form
 
         if (!state.Visible)
         {
-            if (Visible) Hide();
+            if (Visible)
+            {
+                Hide();
+                _paintedState = null;   // force a repaint if this state comes back
+            }
             return;
         }
 
@@ -241,6 +256,22 @@ public sealed class OverlayForm : Form
         }
 
         if (!Visible) Show();
+        RenderIfChanged();
+    }
+
+    // The poll runs every second; this keeps it nearly free unless something the
+    // badge actually shows has changed since the last paint.
+    private void RenderIfChanged()
+    {
+        bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
+        if (ReferenceEquals(_paintedState, _currentState)
+            && ReferenceEquals(_paintedIcon, _currentIcon)
+            && _paintedSize == ClientSize
+            && _paintedText == _remainingText
+            && _paintedFlash == flashOn)
+        {
+            return;
+        }
         RenderLayered();
     }
 
@@ -283,13 +314,22 @@ public sealed class OverlayForm : Form
         int w = ClientSize.Width, h = ClientSize.Height;
         if (w <= 0 || h <= 0) return;
 
+        bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
+
         using var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
         {
             g.Clear(Color.Transparent);
-            bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
             OverlayRenderer.Draw(g, new Rectangle(0, 0, w, h), _currentState, _currentIcon, _remainingText, flashOn);
         }
+
+        // Remember exactly what this paint represents, so RenderIfChanged can skip
+        // the next poll tick when nothing moved.
+        _paintedState = _currentState;
+        _paintedIcon = _currentIcon;
+        _paintedSize = ClientSize;
+        _paintedText = _remainingText;
+        _paintedFlash = flashOn;
 
         IntPtr screenDc = GetDC(IntPtr.Zero);
         IntPtr memDc = CreateCompatibleDC(screenDc);
