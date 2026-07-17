@@ -1,4 +1,4 @@
-# CatFoil 🐱🔒
+# CatFoil 🐱
 
 Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard with one click (or a hotkey) — so a cat walking across your desk (or a toddler slapping the keys) can't type, trigger shortcuts, or close your windows. The mouse keeps working the whole time, so *you* can always click your way back to control.
 
@@ -38,13 +38,6 @@ When locked, CatFoil installs a system-wide [low-level keyboard hook](https://le
 
 - No administrator rights are required (the app manifest requests `asInvoker`).
 - Secure desktop keys like **Ctrl+Alt+Del** are handled by Windows before low-level hooks and cannot be blocked — that's by design, and it's also your emergency escape hatch.
-- Windows may silently remove a hook that takes too long to respond; if keys start leaking through, unlock and re-lock.
-
-## Free
-
-CatFoil is completely free. No license keys, no trial, no time limit — lock your keyboard for as long as you like. The source is public and there's no DRM of any kind.
-
-If CatFoil saves your work from your cat, you're welcome to leave a tip — but it's an invitation, never a gate. 🐾
 
 ## Requirements
 
