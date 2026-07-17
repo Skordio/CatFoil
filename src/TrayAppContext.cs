@@ -2,29 +2,25 @@ using System;
 using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
-using CatFoil.Licensing;
 using Microsoft.Win32;
 
 namespace CatFoil;
 
 /// <summary>
 /// The tray-first application shell: owns the tray icon, keyboard hook,
-/// hotkey, overlay, trial timer, and the (lazily shown) main/settings windows.
+/// hotkey, overlay, and the (lazily shown) main/settings windows.
 /// </summary>
 public sealed class TrayAppContext : ApplicationContext
 {
     private const int ToggleDebounceMs = 400;
-    private const int TrialWarningSeconds = 120;
 
     private readonly Settings _settings;
-    private readonly ILicenseProvider _license;
     private readonly KeyboardHook _hook = new();
     private readonly HotkeyManager _hotkey = new();
     private readonly MainForm _mainForm;
     private readonly OverlayForm _overlay;
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _lockMenuItem;
-    private readonly System.Windows.Forms.Timer _trialTimer = new() { Interval = 1000 };
     // Periodically re-arms the hotkey and hook: Windows quietly drops both after
     // long idle / sleep, and otherwise nothing restores them until the user
     // reopens a window. 60s keeps the vulnerable gap short without churn.
@@ -34,21 +30,15 @@ public sealed class TrayAppContext : ApplicationContext
     // Counts down a user-chosen timed lock, then auto-unlocks.
     private readonly System.Windows.Forms.Timer _timedTimer = new() { Interval = 1000 };
     private int _timedSecondsLeft;
-    // True when a timed lock had to be shortened to the free-trial cap, so its
-    // expiry should surface the buy prompt (the user asked for more than free).
-    private bool _timedClampedByTrial;
     private readonly Icon _appIcon;
 
     private SettingsForm? _settingsForm;
     private RegisteredWaitHandle? _showWait;
-    private int _trialSecondsLeft;
-    private bool _trialWarningShown;
     private int _lastToggleTick;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
         _settings = Settings.Load();
-        _license = new LemonSqueezyProvider(_settings);
         _appIcon = LoadAppIcon();
         _lastToggleTick = unchecked(Environment.TickCount - ToggleDebounceMs);
 
@@ -83,7 +73,6 @@ public sealed class TrayAppContext : ApplicationContext
         ApplyHotkeySettings();
         ApplyStartupSettings();
 
-        _trialTimer.Tick += (_, _) => TrialTick();
         _timedTimer.Tick += (_, _) => TimedTick();
 
         // Keep global input alive across long idle and sleep (see ReassertInput).
@@ -152,7 +141,7 @@ public sealed class TrayAppContext : ApplicationContext
         SetLocked(!_hook.IsLocked);
     }
 
-    private void SetLocked(bool locked, bool expired = false)
+    private void SetLocked(bool locked)
     {
         if (locked == _hook.IsLocked) return;
 
@@ -163,32 +152,17 @@ public sealed class TrayAppContext : ApplicationContext
             _overlay.SetActive(_settings.ShowOverlay);
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
             _lockMenuItem.Text = "Unlock Keyboard";
-
-            _trialWarningShown = false;
-            if (!_license.IsLicensed)
-            {
-                _trialSecondsLeft = TrialDurationSeconds();
-                _trialTimer.Start();
-            }
         }
         else
         {
-            _trialTimer.Stop();
             _timedTimer.Stop();
             _timedSecondsLeft = 0;
-            _timedClampedByTrial = false;
             _hook.Unlock();
             _overlay.SetActive(false);
             _overlay.SetRemaining(null);
             _mainForm.SetLockedUi(false);
             _tray.Text = "CatFoil — keyboard active";
             _lockMenuItem.Text = "Lock Keyboard";
-
-            if (expired)
-            {
-                _mainForm.ShowTrialExpired();
-                ShowMainWindow();
-            }
         }
     }
 
@@ -220,31 +194,9 @@ public sealed class TrayAppContext : ApplicationContext
     // ---------------------------------------------------------------
     private void LockFor(int minutes)
     {
-        int requested = Math.Max(1, minutes) * 60;
-
-        // Lock first so, for the free tier, SetLocked(true) has established the
-        // trial countdown we clamp against below.
         if (!_hook.IsLocked) SetLocked(true);
 
-        if (_license.IsLicensed)
-        {
-            _timedSecondsLeft = requested;
-            _timedClampedByTrial = false;
-        }
-        else
-        {
-            // A free-tier timed lock can't outlast the trial cap. Clamp it so the
-            // "Auto-unlock in…" countdown is honest and can't exceed the limit.
-            int trialCap = _trialSecondsLeft > 0 ? _trialSecondsLeft : TrialDurationSeconds();
-            _timedSecondsLeft = Math.Min(requested, trialCap);
-            _timedClampedByTrial = requested > trialCap;
-        }
-
-        // The timed countdown is now the single source for the label/overlay and
-        // for auto-unlock; stop the trial's parallel countdown so the two can't
-        // fight over the same UI each second (the timed cap enforces the trial).
-        _trialTimer.Stop();
-
+        _timedSecondsLeft = Math.Max(1, minutes) * 60;
         _timedTimer.Start();
         UpdateTimedCountdown();
     }
@@ -254,8 +206,7 @@ public sealed class TrayAppContext : ApplicationContext
         _timedSecondsLeft--;
         if (_timedSecondsLeft <= 0)
         {
-            // Show the buy prompt only if the user asked for longer than free allows.
-            SetLocked(false, expired: _timedClampedByTrial);
+            SetLocked(false);
             return;
         }
         UpdateTimedCountdown();
@@ -278,42 +229,6 @@ public sealed class TrayAppContext : ApplicationContext
             ShowMainWindow();
 
         _overlay.FlashBlockedKey();
-    }
-
-    // ---------------------------------------------------------------
-    // Trial
-    // ---------------------------------------------------------------
-    private static int TrialDurationSeconds()
-    {
-        const int full = 30 * 60;
-
-        // Dev override so the countdown can be tested without waiting 30 minutes.
-        // It can only SHORTEN the session — otherwise setting one env var would
-        // be a license bypass on release builds too.
-        var env = Environment.GetEnvironmentVariable("CATFOIL_TRIAL_SECONDS");
-        return int.TryParse(env, out int s) && s > 0 ? Math.Min(s, full) : full;
-    }
-
-    private void TrialTick()
-    {
-        _trialSecondsLeft--;
-        if (_trialSecondsLeft <= 0)
-        {
-            SetLocked(false, expired: true);
-            return;
-        }
-
-        if (_trialSecondsLeft <= TrialWarningSeconds)
-        {
-            var remaining = TimeSpan.FromSeconds(_trialSecondsLeft);
-            if (!_trialWarningShown)
-            {
-                _trialWarningShown = true;
-                ShowMainWindow();
-            }
-            _mainForm.ShowTrialCountdown(remaining);
-            _overlay.SetRemaining(remaining);
-        }
     }
 
     // ---------------------------------------------------------------
@@ -345,7 +260,7 @@ public sealed class TrayAppContext : ApplicationContext
             return;
         }
 
-        _settingsForm = new SettingsForm(_settings, _license) { Icon = _appIcon };
+        _settingsForm = new SettingsForm(_settings) { Icon = _appIcon };
         _settingsForm.SettingsSaved += () =>
         {
             ApplyHotkeySettings();

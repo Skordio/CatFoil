@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -16,7 +15,6 @@ public sealed class MainForm : Form
     private readonly Button _exitButton = new();
     private readonly HotkeyBadge _hotkeyBadge = new();
     private readonly ToolTip _tip = new();
-    private readonly LinkLabel _buyLink = new();
     private bool _locked;
 
     private static readonly Size UnlockedSize = new(420, 260);
@@ -62,15 +60,6 @@ public sealed class MainForm : Form
         _status.ForeColor = Color.FromArgb(0, 130, 0);
         _status.Text = "Keyboard is unlocked.";
 
-        // --- Buy-a-license link (only shown for trial countdown / expiry) ---
-        _buyLink.Dock = DockStyle.Top;
-        _buyLink.Height = 34;
-        _buyLink.TextAlign = ContentAlignment.MiddleCenter;
-        _buyLink.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
-        _buyLink.Text = "Buy a CatFoil license — removes the 30-minute session limit";
-        _buyLink.Visible = false;
-        _buyLink.LinkClicked += (_, _) => OpenBuyPage();
-
         // --- Toggle button (docked to the bottom, big enough to mouse-click) ---
         _toggle.Dock = DockStyle.Bottom;
         _toggle.Height = 64;
@@ -107,7 +96,6 @@ public sealed class MainForm : Form
         Controls.Add(_exitButton);
         Controls.Add(_settingsButton);
         Controls.Add(_status);           // Fill gets the space left over by the docked controls
-        Controls.Add(_buyLink);
         Controls.Add(_toggle);
 
         FormClosing += OnFormClosing;
@@ -137,7 +125,6 @@ public sealed class MainForm : Form
             _status.ForeColor = Color.FromArgb(60, 60, 60);
             _status.Text = LockedText;
             _toggle.Text = "Unlock Keyboard";
-            _buyLink.Visible = false;
             ResumeLayout();
         }
         else
@@ -153,32 +140,15 @@ public sealed class MainForm : Form
             _status.ForeColor = Color.FromArgb(0, 130, 0);
             _status.Text = "Keyboard is unlocked.";
             _toggle.Text = "Lock Keyboard";
-            _buyLink.Visible = false;
             ResumeLayout();
         }
     }
 
-    public void ShowTrialCountdown(TimeSpan remaining)
-    {
-        if (!_locked) return;
-        _buyLink.Visible = true;
-        _status.Text = LockedText + $"\n\nFree session ends in {remaining:m\\:ss}";
-    }
-
-    /// <summary>Countdown for a user-chosen timed lock (no buy link).</summary>
+    /// <summary>Countdown for a user-chosen timed lock.</summary>
     public void ShowLockCountdown(TimeSpan remaining)
     {
         if (!_locked) return;
-        // A timed lock is its own single countdown; never carry over the trial's buy link.
-        _buyLink.Visible = false;
         _status.Text = LockedText + $"\n\nAuto-unlock in {remaining:m\\:ss}";
-    }
-
-    public void ShowTrialExpired()
-    {
-        _status.ForeColor = Color.FromArgb(180, 0, 0);
-        _status.Text = "Free session limit reached — the keyboard has been unlocked.\n\nBuy a license for unlimited lock time.";
-        _buyLink.Visible = true;
     }
 
     /// <summary>Re-reads the hotkey from settings (call after settings change).</summary>
@@ -186,18 +156,6 @@ public sealed class MainForm : Form
     {
         _hotkeyBadge.Visible = _settings.HotkeyEnabled;
         _hotkeyBadge.SetParts(SettingsForm.ActiveHotkeyParts(_settings));
-    }
-
-    public static void OpenBuyPage()
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(Licensing.LemonSqueezyProvider.BuyUrl) { UseShellExecute = true });
-        }
-        catch
-        {
-            // No browser available — nothing sensible to do.
-        }
     }
 
     /// <summary>

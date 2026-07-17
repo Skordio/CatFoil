@@ -11,7 +11,7 @@
 ; all resolve to the matching per-user or common location automatically.
 ; The app self-elevates at runtime only when it needs to block elevated windows,
 ; so even a per-user install can do everything a per-machine one can.
-; All user state (settings.json, license, overlay icons) already lives in
+; All user state (settings.json, overlay icons) already lives in
 ; %APPDATA%\CatFoil, independent of the install location, so an uninstall leaves
 ; it untouched and a reinstall/upgrade keeps every setting.
 ;

@@ -39,11 +39,11 @@ When locked, CatFoil installs a system-wide [low-level keyboard hook](https://le
 - Secure desktop keys like **Ctrl+Alt+Del** are handled by Windows before low-level hooks and cannot be blocked — that's by design, and it's also your emergency escape hatch.
 - Windows may silently remove a hook that takes too long to respond; if keys start leaking through, unlock and re-lock.
 
-## License keys
+## Free
 
-CatFoil is source-available and free to build yourself. The prebuilt EXE is free to use with one restriction: each lock session ends after **30 minutes** (with a countdown warning at 2 minutes remaining). A one-time license key — sold via Lemon Squeezy for about the price of a coffee — removes the limit. Enter the key under **Settings → License**; activation happens once online and works offline afterwards.
+CatFoil is completely free. No license keys, no trial, no time limit — lock your keyboard for as long as you like. The source is public and there's no DRM of any kind.
 
-There's no DRM beyond that. If you'd rather clone the repo and remove the check, you can — but if CatFoil saves your work from your cat, consider buying a license anyway. 🐾
+If CatFoil saves your work from your cat, you're welcome to leave a tip — but it's an invitation, never a gate. 🐾
 
 ## Requirements
 
@@ -84,24 +84,18 @@ is offline and supports silent install (`/VERYSILENT`), so it's ready for the Mi
 MSI/EXE submission path — that path additionally requires code-signing the setup and payload with
 a Microsoft-Trusted-Root cert.
 
-### Dev tips
-
-- Set the `CATFOIL_TRIAL_SECONDS` environment variable (e.g. `180`) before launching to shrink the 30-minute free session for testing the countdown/expiry flow.
-- The Lemon Squeezy product URL lives in `src/Licensing/LemonSqueezyProvider.cs` (`BuyUrl`) — it's a placeholder until the store product exists.
-
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
 | `src/Program.cs` | Entry point; single-instance mutex (a second launch surfaces the first). |
-| `src/TrayAppContext.cs` | App shell: tray icon/menu, lock state, trial timer, wiring between everything. |
+| `src/TrayAppContext.cs` | App shell: tray icon/menu, lock state, timed lock, wiring between everything. |
 | `src/KeyboardHook.cs` | The `WH_KEYBOARD_LL` hook; swallows keys while locked, detects the unlock combo. |
 | `src/HotkeyManager.cs` | `RegisterHotKey` wrapper for locking while the keyboard is live. |
-| `src/MainForm.cs` | The lock/unlock window (flash feedback, trial countdown, buy link). |
+| `src/MainForm.cs` | The lock/unlock window (hotkey badge, timed-lock countdown). |
 | `src/OverlayForm.cs` | The draggable locked-state badge + fullscreen detection. |
-| `src/SettingsForm.cs` | Settings UI including license activation. |
+| `src/SettingsForm.cs` | Settings UI (general, hotkey, auto-lock). |
 | `src/Settings.cs` | JSON settings in `%APPDATA%\CatFoil`. |
-| `src/Licensing/` | `ILicenseProvider` + Lemon Squeezy implementation (Store build can slot in later). |
 | `assets/cat.ico` | Placeholder cat icon (EXE, tray, overlay) — replace with real art anytime. |
 | `CatFoil.csproj` | SDK-style project file (WinForms, `net8.0-windows`, no external dependencies). |
 | `app.manifest` | Requests `asInvoker` (no UAC prompt). |

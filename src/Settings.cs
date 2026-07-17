@@ -52,10 +52,6 @@ public sealed class Settings
     public OverlayStateSettings OverlayNormal { get; set; } = new();
     public OverlayStateSettings OverlayFullscreen { get; set; } = new() { Visible = false };
 
-    public string? LicenseKey { get; set; }
-    public string? LicenseInstanceId { get; set; }
-    public string? LicenseSignature { get; set; }
-
     public static Settings Load()
     {
         try

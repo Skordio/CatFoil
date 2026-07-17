@@ -57,11 +57,6 @@ public sealed class WelcomeForm : Form
             "Closing this window doesn't quit CatFoil — it keeps running in the system tray, " +
             "next to the clock. Right-click the tray icon to lock, open settings, or exit.");
 
-        AddHeader(flow, "Free version");
-        AddBody(flow,
-            "Lock sessions end after 30 minutes, with a warning 2 minutes before. A one-time " +
-            "license removes the limit — see Settings → License.");
-
         var ok = new Button
         {
             Text = "Get started",

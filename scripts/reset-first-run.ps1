@@ -1,7 +1,7 @@
 # Resets CatFoil's first-run state so the welcome screen shows again on next launch.
 #   .\scripts\reset-first-run.ps1         # clear just the WelcomeShown flag
 #   .\scripts\reset-first-run.ps1 -All    # delete settings.json entirely (true first run:
-#                                         # also wipes hotkey, overlay position, license, etc.)
+#                                         # also wipes hotkey, overlay position, etc.)
 param(
     [switch]$All
 )

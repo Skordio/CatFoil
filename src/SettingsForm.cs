@@ -2,14 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
-using CatFoil.Licensing;
 
 namespace CatFoil;
 
 public sealed class SettingsForm : Form
 {
     private readonly Settings _settings;
-    private readonly ILicenseProvider _license;
 
     private readonly CheckBox _chkTrayOnClose = new();
     private readonly CheckBox _chkStartMinimized = new();
@@ -23,10 +21,6 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _chkChord = new();
     private readonly TextBox _txtHotkey = new();
     private readonly ToolTip _tip = new() { AutoPopDelay = 20000 };
-    private readonly TextBox _txtLicenseKey = new();
-    private readonly Button _btnActivate = new();
-    private readonly Label _lblLicenseStatus = new();
-    private readonly LinkLabel _lnkBuy = new();
     private readonly Button _btnSave = new();
     private readonly Button _btnApply = new();
     private readonly Button _btnCancel = new();
@@ -47,10 +41,9 @@ public sealed class SettingsForm : Form
     /// should quit so that instance can take over the single-instance slot.</summary>
     public event Action? RestartElevatedRequested;
 
-    public SettingsForm(Settings settings, ILicenseProvider license)
+    public SettingsForm(Settings settings)
     {
         _settings = settings;
-        _license = license;
         _hotkey = settings.Hotkey;
         _chordModifiers = settings.ChordModifiers;
         _chordKeys = settings.ChordKeys;
@@ -61,7 +54,7 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 690);
+        ClientSize = new Size(512, 548);
         Font = new Font("Segoe UI", 9.5f);
 
         // --- General ---
@@ -138,33 +131,13 @@ public sealed class SettingsForm : Form
         _chkChord.CheckedChanged += (_, _) => UpdateHotkeyDisplay();
         UpdateHotkeyDisplay();
 
-        // --- License ---
-        // The status label wraps to 2 lines for longer messages, so it goes
-        // LAST (at the bottom) where it can only grow into empty space — never
-        // over the key box the way it did when it sat on top.
-        var grpLicense = new GroupBox { Text = "License", Bounds = new Rectangle(12, 408, 488, 138) };
-        _txtLicenseKey.Bounds = new Rectangle(16, 28, 268, 27);
-        _txtLicenseKey.PlaceholderText = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
-        _txtLicenseKey.Text = settings.LicenseKey ?? "";
-        _btnActivate.Text = "Activate";
-        _btnActivate.Bounds = new Rectangle(296, 27, 104, 29);
-        _btnActivate.Click += OnActivateClicked;
-        _lnkBuy.AutoSize = true;
-        _lnkBuy.Location = new Point(16, 64);
-        _lnkBuy.Text = "Buy a license — removes the 30-minute session limit";
-        _lnkBuy.LinkClicked += (_, _) => MainForm.OpenBuyPage();
-        _lblLicenseStatus.AutoSize = true;
-        _lblLicenseStatus.MaximumSize = new Size(456, 0);
-        _lblLicenseStatus.Location = new Point(16, 94);
-        grpLicense.Controls.AddRange(new Control[] { _txtLicenseKey, _btnActivate, _lnkBuy, _lblLicenseStatus });
-
         // --- Auto-lock ---
         // Two rows so nothing overlaps: "Auto-lock after [n] minutes" on the first
         // line, the "of no keyboard or mouse activity" qualifier beneath it. The
         // selector and the "minutes" label are placed from the checkbox's *measured*
         // width (not a hardcoded x), so the AutoSize "Auto-lock after" text can never
         // sit on top of the selector.
-        var grpAutoLock = new GroupBox { Text = "Auto-lock", Bounds = new Rectangle(12, 550, 488, 88) };
+        var grpAutoLock = new GroupBox { Text = "Auto-lock", Bounds = new Rectangle(12, 408, 488, 88) };
         _chkAutoLock.Text = "Auto-lock after";
         _chkAutoLock.AutoSize = true;
         _chkAutoLock.Font = Font;                 // pin the form font so PreferredSize measures correctly
@@ -189,7 +162,7 @@ public sealed class SettingsForm : Form
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 650, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 508, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -197,19 +170,18 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnApply.Text = "Apply";
-        _btnApply.Bounds = new Rectangle(233, 650, 85, 30);
+        _btnApply.Bounds = new Rectangle(233, 508, 85, 30);
         _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 650, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 508, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 650, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 508, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
 
-        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpLicense, grpAutoLock, _btnWelcome, _btnApply, _btnSave, _btnCancel });
-        RefreshLicenseStatus(null);
+        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpAutoLock, _btnWelcome, _btnApply, _btnSave, _btnCancel });
     }
 
     private static void AddCheck(GroupBox parent, CheckBox check, string text, int y, bool value)
@@ -318,39 +290,6 @@ public sealed class SettingsForm : Form
             : HotkeyParts(s.Hotkey);
 
     internal static string FormatHotkey(Keys combo) => string.Join(" + ", HotkeyParts(combo));
-
-    private async void OnActivateClicked(object? sender, EventArgs e)
-    {
-        _btnActivate.Enabled = false;
-        _lblLicenseStatus.ForeColor = SystemColors.ControlText;
-        _lblLicenseStatus.Text = "Activating…";
-
-        var result = await _license.ActivateAsync(_txtLicenseKey.Text);
-
-        RefreshLicenseStatus(result);
-        _btnActivate.Enabled = true;
-    }
-
-    private void RefreshLicenseStatus(LicenseActivationResult? result)
-    {
-        if (result is { Success: false })
-        {
-            _lblLicenseStatus.ForeColor = Color.FromArgb(180, 0, 0);
-            _lblLicenseStatus.Text = result.Message;
-            return;
-        }
-
-        if (_license.IsLicensed)
-        {
-            _lblLicenseStatus.ForeColor = Color.FromArgb(0, 130, 0);
-            _lblLicenseStatus.Text = "Licensed ✓ — unlimited lock time on this machine.";
-        }
-        else
-        {
-            _lblLicenseStatus.ForeColor = SystemColors.ControlText;
-            _lblLicenseStatus.Text = "Free version — lock sessions end after 30 minutes.";
-        }
-    }
 
     private void OnRunAsAdminChanged(object? sender, EventArgs e)
     {

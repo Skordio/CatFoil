@@ -41,18 +41,15 @@ Persistent controls:
 - **Hotkey badge** (bottom-left, above the lock button) — a custom-drawn control
   (`HotkeyBadge`) rendering the active hotkey as 3D keycaps joined by "+". Hidden
   when the hotkey is disabled.
-- **Buy-a-license link** (hidden except during trial countdown/expiry).
 
 Behaviors:
 - **Close-to-tray**: `FormClosing` cancels a user close and hides, unless
   `AllowClose` is set (real exit) or the tray-on-close setting is off.
-- **Trial countdown**: `ShowTrialCountdown` appends "Free session ends in m:ss"
-  and reveals the buy link.
-- **Trial expired**: `ShowTrialExpired` shows a red "Free session limit reached"
-  message + buy link.
+- **Timed-lock countdown**: `ShowLockCountdown` appends "Auto-unlock in m:ss"
+  while a user-chosen "Lock for N minutes" runs.
 
 ### 2.2 Settings window — `src/SettingsForm.cs`
-A fixed-size dialog (512×542), lazily created and reused by the tray. Groups:
+A fixed-size dialog (512×548), lazily created and reused by the tray. Groups:
 
 - **General**: checkboxes — Hide to tray on close · Start hidden in tray ·
   Start CatFoil when Windows starts · Show the cat overlay while locked · **Run as
@@ -62,12 +59,12 @@ A fixed-size dialog (512×542), lazily created and reused by the tray. Groups:
   CatFoil elevated (UAC prompt) so its hook can also block elevated foreground
   windows; if already elevated the box is checked and disabled. The elevated-logon
   sub-option (enabled only while elevated) creates a Task Scheduler task that starts
-  CatFoil elevated at logon with no prompt. See §8.
+  CatFoil elevated at logon with no prompt. See §7.
 - **Hotkey**: enable checkbox · a click-to-capture hotkey box ("press keys") ·
   a **Multi-key chord** checkbox (with a tooltip explaining the leak-through
   trade-off). Capture logic differs for classic vs chord mode.
-- **License**: key entry box · **Activate** button (async call) · buy link ·
-  a status label (bottom, wraps to 2 lines) reflecting licensed/free state.
+- **Auto-lock**: enable checkbox + a minutes selector — locks after that long
+  with no keyboard or mouse activity.
 
 Bottom row: **Welcome tour…** · **Apply** (persist without closing) ·
 **Save** (persist + close) · **Cancel**. Save/Apply both call `PersistSettings()`,
@@ -90,7 +87,7 @@ the two `OverlayStateSettings` are written, and `SettingsSaved` is raised.
 Shown once on first launch (flag `Settings.WelcomeShown`), and re-openable from
 Settings → "Welcome tour…". A scrolling tour (auto-sized to content, since the
 hotkey string is variable): what CatFoil does, Locking, Unlocking, the cat badge,
-the tray icon, and the free-version limit. Single **Get started** button.
+and the tray icon. Single **Get started** button.
 
 ### 2.5 Locked overlay badge — `src/OverlayForm.cs`
 A small, borderless, always-on-top **layered window** (WS_EX_LAYERED +
@@ -100,7 +97,7 @@ steals focus (WS_EX_NOACTIVATE, `ShowWithoutActivation`). Features:
   `ForegroundIsFullscreen()` and shows/hides/resizes/repaints accordingly.
 - **Draggable** (position saved, clamped to the virtual screen); a **click**
   (no drag) opens the main window.
-- **Countdown text** during the trial warning (GDI+ `DrawString` so glyphs carry
+- **Countdown text** during a timed lock (GDI+ `DrawString` so glyphs carry
   alpha on the layered surface).
 - **Red flash** on a blocked keypress (`FlashBlockedKey`).
 - **Manual tooltip** shown on hover (auto tooltips don't work on never-activated
@@ -133,7 +130,7 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
 | Unlock while locked | `src/KeyboardHook.cs` | RegisterHotKey can't fire while keys are swallowed, so the unlock combo is detected **inside** the hook, using modifier state the hook **tracks itself** (`TrackModifier`) — never `GetAsyncKeyState`, which is blind to swallowed keys. |
 | Classic hotkey | `src/HotkeyManager.cs` | `RegisterHotKey` (with `MOD_NOREPEAT`) on a `NativeWindow`; fires only while unlocked. This is the sole lock trigger in classic mode. |
 | Chord hotkey | `src/KeyboardHook.cs` | Opt-in "Alt + C + F"-style chord, detected in **both** lock states inside the hook (`CompletesChord`), since RegisterHotKey can't express multi-key chords. The completing keystroke is swallowed; earlier chord keys leak to the focused app while unlocked (documented trade-off). |
-| Toggle plumbing | `src/TrayAppContext.cs` | `ToggleLock` (400 ms debounce, since lock and unlock use the same keys) → `SetLocked`. Sets hook lock state, updates UI/tray/overlay, and starts the trial timer if unlicensed. |
+| Toggle plumbing | `src/TrayAppContext.cs` | `ToggleLock` (400 ms debounce, since lock and unlock use the same keys) → `SetLocked`. Sets hook lock state and updates UI/tray/overlay. |
 | Idle resilience | `src/TrayAppContext.cs` | A 60 s **watchdog** plus power-resume / session-unlock handlers re-arm the hotkey and (while unlocked) reinstall the hook, because Windows silently drops both after long idle or sleep. |
 
 `Ctrl + Alt + Del` cannot be blocked (Windows reserves it) and is documented as
@@ -141,18 +138,7 @@ the always-available escape hatch.
 
 ---
 
-## 5. Licensing / monetization
-
-| Piece | File | Role |
-| --- | --- | --- |
-| Abstraction | `src/Licensing/ILicenseProvider.cs` | `IsLicensed` + `ActivateAsync`, so a future Microsoft Store `StoreLicenseProvider` can drop in. |
-| Implementation | `src/Licensing/LemonSqueezyProvider.cs` | Activates a key against the Lemon Squeezy license API (one online call), then trusts the cached activation offline. |
-| Anti-handedit | same | Activation is bound with a machine-specific **HMAC-SHA256 signature** (salt in public source + key + instance id + `MachineGuid`), so editing/copying `settings.json` alone won't unlock. Honor-system by design — the source is public. |
-| Free tier | `src/TrayAppContext.cs` | Each lock **session** auto-unlocks after **30 minutes** (warning + on-badge countdown at 2 minutes remaining), then shows a buy prompt. `CATFOIL_TRIAL_SECONDS` can only **shorten** the session (for testing). |
-
----
-
-## 6. Settings model — `src/Settings.cs`
+## 5. Settings model — `src/Settings.cs`
 
 JSON at `%APPDATA%\CatFoil\settings.json` (`Keys` serialized as string flags).
 Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled`, `UseChordHotkey`
@@ -160,8 +146,8 @@ Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled`, `UseChordHotkey`
 `StartWithWindows`, `StartElevatedOnBoot`, `StartMinimized`, `ShowOverlay`, `WelcomeShown`,
 `OverlayPosition`, per-state `OverlayNormal`/`OverlayFullscreen`
 (`OverlayStateSettings`: Visible, UseCustomIcon, CustomIconFile, Size 32–256,
-ShowBackground), and license fields (`LicenseKey`, `LicenseInstanceId`,
-`LicenseSignature`). Corrupt files fall back to defaults.
+ShowBackground), plus `AutoLockEnabled`/`AutoLockMinutes`. Corrupt files fall back
+to defaults.
 
 Startup is managed by `src/Startup.cs`: "Start with Windows" is an
 `HKCU\...\Run\CatFoil` value (non-elevated), re-applied on every launch and save;
@@ -171,7 +157,7 @@ on, the Run key is suppressed so they don't both launch at logon.
 
 ---
 
-## 7. Feature checklist
+## 6. Feature checklist
 
 - Keyboard lock/unlock (mouse stays live); Ctrl+Alt+Del escape hatch.
 - Three ways to toggle: main-window button, tray menu, global hotkey.
@@ -180,8 +166,7 @@ on, the Run key is suppressed so they don't both launch at logon.
   custom icons, size, and background — with live previews.
 - First-run welcome tour, re-openable from settings.
 - Start-with-Windows, start-minimized, close-to-tray options.
-- One-time license (Lemon Squeezy) removing the 30-minute free-session limit,
-  machine-bound to resist casual bypass.
+- Free and unrestricted: no license, no trial, no limit on how long a lock lasts.
 - Resilience to Windows silently dropping global input after idle/sleep.
 - Optional **run-as-administrator** relaunch so the lock also covers elevated windows,
   and optional **silent elevated autostart** at logon (scheduled task, no UAC prompt).
@@ -191,7 +176,7 @@ on, the Run key is suppressed so they don't both launch at logon.
 
 ---
 
-## 8. What the lock can't block (and elevation)
+## 7. What the lock can't block (and elevation)
 
 CatFoil blocks every key-**down** its hook receives while locked, but some things
 are out of a user-mode hook's reach:
@@ -227,11 +212,11 @@ prompt**. Creating/removing that task needs an already-elevated process, so the
 option is only enabled once "Run as administrator" is on. Without it, elevation is
 per-run and would need re-enabling after each reboot.
 
-## 9. Packaging & distribution
+## 8. Packaging & distribution
 
 CatFoil ships in **two formats every release**, both built from the same self-contained
 single-file `CatFoil.exe`: a **portable** EXE (no install) and an **installer**. All mutable
-state lives in `%APPDATA%\CatFoil` (settings, license, overlay icons), never next to the
+state lives in `%APPDATA%\CatFoil` (settings, overlay icons), never next to the
 binary, so the two formats share settings on one machine, an uninstall leaves state intact, and
 switching format / reinstalling / upgrading keeps every setting. The **installer** is the
 artifact destined for the Microsoft Store; the portable is a GitHub-Releases-only download.
@@ -251,7 +236,7 @@ artifact destined for the Microsoft Store; the portable is a GitHub-Releases-onl
   `AppMutex=CatFoil-SingleInstance` (matching the app's single-instance mutex in
   `src/Program.cs`) lets the installer detect and close a running instance so it can replace
   the self-locking EXE without a reboot. The `asInvoker` manifest is unchanged — the app still
-  self-elevates on demand (§8), so even a no-admin per-user install can block elevated windows.
+  self-elevates on demand (§7), so even a no-admin per-user install can block elevated windows.
   The post-install launch uses `runasoriginaluser` so an all-users (elevated) install still
   starts CatFoil as the normal user.
 
@@ -265,5 +250,4 @@ Microsoft Store's **MSI/EXE submission path** — so the same installer can be l
 Store without repackaging as MSIX. The remaining Store prerequisite is **code-signing** the
 setup and payload with a cert chaining to a Microsoft-Trusted-Root CA (e.g. Azure Trusted
 Signing); the Store does not auto-update MSI/EXE apps, so updates stay the app's/installer's
-responsibility. MSIX remains a separate future option for native Store in-app-purchase
-licensing (`StoreLicenseProvider`), which needs package identity the unpackaged EXE lacks.
+responsibility. CatFoil would be listed as a **free** app.
