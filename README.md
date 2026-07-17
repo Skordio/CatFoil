@@ -4,11 +4,12 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 
 ## Features
 
-- **One-click lock** from the main window, the tray menu, or a global hotkey (default **Ctrl+Alt+L** — rebindable).
+- **One-click lock** from the main window, the tray menu, or a global hotkey (default **Alt+G** — rebindable, and optionally a multi-key chord like Alt + C + F).
 - **Lives in the system tray** with a cat icon; closing the window hides it to the tray instead of exiting.
 - **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. It stays out of the way of fullscreen apps (videos, games) and reappears afterwards.
-- **Blocked-key feedback**: pressing a key while locked flashes the window/overlay red, and restores the window if you'd otherwise have no way back in.
-- **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay, hide-to-tray, start hidden, start with Windows (a registry Run entry the app manages itself).
+- **Blocked-key feedback**: pressing a key while locked flashes the overlay badge red, and restores the main window if you'd otherwise have no way back in.
+- **Timed lock** ("Lock for…" in the tray menu) that auto-unlocks after 5/15/30/60 minutes, and optional **auto-lock** after a stretch of no keyboard or mouse activity.
+- **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay appearance, auto-lock, hide-to-tray, start hidden, and start with Windows (a registry Run entry the app manages itself).
 - **Two ways to get it**: a **portable** single-file EXE that runs with no install, or a **one-click installer** (per-user with no admin, or all-users) that adds a Start-menu shortcut and an uninstaller. Either way your settings live in `%APPDATA%`, so switching formats, upgrading, or reinstalling keeps everything.
 
 ## Installing

@@ -94,7 +94,9 @@ A small, borderless, always-on-top **layered window** (WS_EX_LAYERED +
 `UpdateLayeredWindow` pushing a 32bpp ARGB bitmap) shown while locked. It never
 steals focus (WS_EX_NOACTIVATE, `ShowWithoutActivation`). Features:
 - **Per-state appearance**: a 1-second poll picks Normal vs Fullscreen state via
-  `ForegroundIsFullscreen()` and shows/hides/resizes/repaints accordingly.
+  `ForegroundIsFullscreen()` and shows / hides / resizes accordingly. Re-compositing
+  the layered window is skipped unless the resolved icon, size, countdown, or flash
+  actually changed since the last paint, so the poll is nearly free while nothing moves.
 - **Draggable** (position saved, clamped to the virtual screen); a **click**
   (no drag) opens the main window.
 - **Countdown text** during a timed lock (GDI+ `DrawString` so glyphs carry
@@ -186,8 +188,8 @@ are out of a user-mode hook's reach:
 - **Win + L** (lock workstation) — Windows processes this specially; low-level
   keyboard hooks generally can't suppress it. (Effect is just "PC locks.")
 - **Xbox Game Bar (Win + G)** and a handful of other shell/UWP feature shortcuts —
-  the hook *does* see and swallow these key-downs (confirmed empirically with the
-  opt-in `src/HookLog.cs` diagnostic: `DOWN LWin -> BLOCKED`, `DOWN G -> BLOCKED`),
+  the hook *does* see and swallow these key-downs (confirmed empirically during
+  investigation with a diagnostic hook log: `DOWN LWin -> BLOCKED`, `DOWN G -> BLOCKED`),
   yet Windows still activates the feature, because its activation is dispatched off
   the low-level-hook path. Returning `1` from the hook cannot stop it. The only
   reliable blocks are system-level and persistent (disabling the Game Bar app
