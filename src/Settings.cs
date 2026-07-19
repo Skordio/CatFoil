@@ -74,7 +74,12 @@ public sealed class Settings
     public void Save()
     {
         System.IO.Directory.CreateDirectory(Directory);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOptions));
+        // Write-to-temp + rename: the rename is atomic on NTFS, so an
+        // interrupted save leaves either the old or the new complete file —
+        // never a truncated one.
+        string tmp = FilePath + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOptions));
+        File.Move(tmp, FilePath, overwrite: true);
     }
 }
 

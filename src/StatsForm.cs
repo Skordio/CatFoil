@@ -12,13 +12,23 @@ namespace CatFoil;
 public sealed class StatsForm : Form
 {
     private readonly Settings _settings;
+    private readonly Func<long>? _inProgressSeconds;
+    private readonly Action? _onReset;
+    private readonly System.Windows.Forms.Timer _refresh = new() { Interval = 1000 };
     private readonly Label _sessions = new();
     private readonly Label _time = new();
     private readonly Label _blocked = new();
 
-    public StatsForm(Settings settings, Icon appIcon)
+    /// <param name="inProgressSeconds">Elapsed seconds of a lock session in
+    /// progress (0 when unlocked) — added to the displayed total so the
+    /// read-out ticks live while the keyboard is locked.</param>
+    /// <param name="onReset">Called after a reset zeroes the counters, before
+    /// they're saved — lets the owner restart an in-progress session's clock.</param>
+    public StatsForm(Settings settings, Icon appIcon, Func<long>? inProgressSeconds = null, Action? onReset = null)
     {
         _settings = settings;
+        _inProgressSeconds = inProgressSeconds;
+        _onReset = onReset;
         Icon = appIcon;
 
         Text = "CatFoil Statistics";
@@ -54,6 +64,9 @@ public sealed class StatsForm : Form
         Controls.Add(btnClose);
 
         RefreshValues();
+        _refresh.Tick += (_, _) => RefreshValues();
+        _refresh.Start();
+        FormClosed += (_, _) => _refresh.Dispose();
     }
 
     private void AddRow(string caption, Label value, int y)
@@ -74,7 +87,7 @@ public sealed class StatsForm : Form
     private void RefreshValues()
     {
         _sessions.Text = _settings.StatLockSessions.ToString("N0");
-        _time.Text = FormatDuration(_settings.StatLockedSeconds);
+        _time.Text = FormatDuration(_settings.StatLockedSeconds + (_inProgressSeconds?.Invoke() ?? 0));
         _blocked.Text = _settings.StatBlockedKeys.ToString("N0");
     }
 
@@ -94,6 +107,7 @@ public sealed class StatsForm : Form
         _settings.StatLockSessions = 0;
         _settings.StatLockedSeconds = 0;
         _settings.StatBlockedKeys = 0;
+        _onReset?.Invoke();
         _settings.Save();
         RefreshValues();
     }

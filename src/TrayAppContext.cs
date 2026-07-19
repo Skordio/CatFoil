@@ -166,10 +166,7 @@ public sealed class TrayAppContext : ApplicationContext
             _timedTimer.Stop();
             _timedSecondsLeft = 0;
             _hook.Unlock();
-            // Accumulate this session's locked time and persist the stats.
-            long elapsed = unchecked((uint)Environment.TickCount - (uint)_lockStartTick) / 1000;
-            _settings.StatLockedSeconds += elapsed;
-            _settings.Save();
+            FlushLockStats();
             _overlay.SetActive(false);
             _overlay.SetRemaining(null);
             _mainForm.SetLockedUi(false);
@@ -243,7 +240,8 @@ public sealed class TrayAppContext : ApplicationContext
         if (!_hook.IsLocked) return;
 
         // Count it — this is a key the cat pressed that went nowhere. Kept in
-        // memory during the session and persisted when the session ends.
+        // memory and persisted at the next watchdog checkpoint or unlock, so a
+        // key-mashing cat never causes a disk write per keystroke.
         _settings.StatBlockedKeys++;
 
         // The window is the unlock failsafe: bring it back if the user has no
@@ -266,10 +264,48 @@ public sealed class TrayAppContext : ApplicationContext
         _mainForm.Activate();
     }
 
+    /// <summary>
+    /// Credits the running lock session's elapsed time to the stats and
+    /// persists them. Advances the baseline by exactly the whole seconds
+    /// credited, so repeated flushes never drop the sub-second remainder.
+    /// </summary>
+    private void FlushLockStats()
+    {
+        long secs = unchecked((uint)Environment.TickCount - (uint)_lockStartTick) / 1000;
+        _settings.StatLockedSeconds += secs;
+        _lockStartTick = unchecked(_lockStartTick + (int)(secs * 1000));
+        _settings.Save();
+    }
+
+    private long InProgressLockSeconds() => _hook.IsLocked
+        ? unchecked((uint)Environment.TickCount - (uint)_lockStartTick) / 1000
+        : 0L;
+
+    // A reset during a lock session restarts that session's clock and counts
+    // the in-progress session as 1, so the display never shows "0 sessions"
+    // next to a nonzero (and growing) locked time.
+    private void OnStatsReset()
+    {
+        if (!_hook.IsLocked) return;
+        _lockStartTick = Environment.TickCount;
+        _settings.StatLockSessions = 1;
+    }
+
     private void ShowStats()
     {
-        using var stats = new StatsForm(_settings, _appIcon);
-        stats.ShowDialog(_mainForm);
+        using var stats = new StatsForm(_settings, _appIcon, InProgressLockSeconds, OnStatsReset);
+
+        // The owner may be hidden (closed to tray) or minimized; CenterParent
+        // against an invisible window can land anywhere, so center on screen.
+        if (_mainForm.Visible && _mainForm.WindowState != FormWindowState.Minimized)
+        {
+            stats.ShowDialog(_mainForm);
+        }
+        else
+        {
+            stats.StartPosition = FormStartPosition.CenterScreen;
+            stats.ShowDialog();
+        }
     }
 
     private void ShowWelcome()
@@ -354,6 +390,10 @@ public sealed class TrayAppContext : ApplicationContext
         // where a keystroke could leak past the lock.
         if (!_hook.IsLocked)
             _hook.Reinstall(out _);
+        else
+            // Checkpoint the running session's stats each tick so a crash or
+            // force-kill while locked loses at most a minute, not the session.
+            FlushLockStats();
 
         // Re-register quietly — a genuine conflict was already reported at startup,
         // and we don't want a balloon every 60 seconds.
