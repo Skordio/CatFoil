@@ -49,7 +49,7 @@ Behaviors:
   while a user-chosen "Lock for N minutes" runs.
 
 ### 2.2 Settings window — `src/SettingsForm.cs`
-A fixed-size dialog (512×548), lazily created and reused by the tray. Groups:
+A fixed-size dialog (512×636), lazily created and reused by the tray. Groups:
 
 - **General**: checkboxes — Hide to tray on close · Start hidden in tray ·
   Start CatFoil when Windows starts · Show the cat overlay while locked · **Run as
@@ -65,6 +65,10 @@ A fixed-size dialog (512×548), lazily created and reused by the tray. Groups:
   trade-off). Capture logic differs for classic vs chord mode.
 - **Auto-lock**: enable checkbox + a minutes selector — locks after that long
   with no keyboard or mouse activity.
+- **Sounds**: two checkboxes — play a sound on lock/unlock · play a (throttled)
+  sound when a key is blocked while locked. Both use the user's Windows system
+  sounds (tooltip points at the Windows sound settings if the mapped events
+  are "(None)").
 
 Bottom row: **Welcome tour…** · **Apply** (persist without closing) ·
 **Save** (persist + close) · **Cancel**. Save/Apply both call `PersistSettings()`,
