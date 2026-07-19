@@ -52,6 +52,11 @@ public sealed class Settings
     public OverlayStateSettings OverlayNormal { get; set; } = new();
     public OverlayStateSettings OverlayFullscreen { get; set; } = new() { Visible = false };
 
+    // Lifetime usage statistics.
+    public int StatLockSessions { get; set; }
+    public long StatLockedSeconds { get; set; }
+    public long StatBlockedKeys { get; set; }
+
     public static Settings Load()
     {
         try
