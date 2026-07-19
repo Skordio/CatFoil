@@ -13,6 +13,7 @@ namespace CatFoil;
 public sealed class TrayAppContext : ApplicationContext
 {
     private const int ToggleDebounceMs = 400;
+    private const int BlockedSoundThrottleMs = 700;
 
     private readonly Settings _settings;
     private readonly KeyboardHook _hook = new();
@@ -43,6 +44,9 @@ public sealed class TrayAppContext : ApplicationContext
         _settings = Settings.Load();
         _appIcon = LoadAppIcon();
         _lastToggleTick = unchecked(Environment.TickCount - ToggleDebounceMs);
+        // Seed with a real tick value: left at 0, the throttle test would stay
+        // false for the whole ~24.9-day window where TickCount is negative.
+        _lastBlockedSoundTick = unchecked(Environment.TickCount - BlockedSoundThrottleMs);
 
         _mainForm = new MainForm(_settings) { Icon = _appIcon };
         _ = _mainForm.Handle;   // create the handle now so BeginInvoke works before the first Show
@@ -258,7 +262,7 @@ public sealed class TrayAppContext : ApplicationContext
         if (_settings.SoundOnBlockedKey)
         {
             int now = Environment.TickCount;
-            if (unchecked(now - _lastBlockedSoundTick) >= 700)
+            if (unchecked(now - _lastBlockedSoundTick) >= BlockedSoundThrottleMs)
             {
                 _lastBlockedSoundTick = now;
                 Sounds.Blocked();

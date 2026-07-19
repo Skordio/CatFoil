@@ -169,6 +169,12 @@ public sealed class SettingsForm : Form
         var grpSounds = new GroupBox { Text = "Sounds", Bounds = new Rectangle(12, 506, 488, 78) };
         AddCheck(grpSounds, _chkSoundLock, "Play a sound when locking and unlocking", 24, settings.SoundOnLockUnlock);
         AddCheck(grpSounds, _chkSoundBlocked, "Play a sound when a key is blocked while locked", 50, settings.SoundOnBlockedKey);
+        // These play the user's Windows scheme sounds, so if the mapped events
+        // are set to "(None)" nothing plays — point people at the real knob.
+        const string soundTip = "Uses your Windows system sounds (Exclamation, Asterisk and Critical Stop).\n" +
+            "If you hear nothing, check those events in Windows Settings > Sound > More sound settings.";
+        _tip.SetToolTip(_chkSoundLock, soundTip);
+        _tip.SetToolTip(_chkSoundBlocked, soundTip);
 
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
