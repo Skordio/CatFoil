@@ -394,21 +394,25 @@ public sealed class TrayAppContext : ApplicationContext
     // ---------------------------------------------------------------
 
     /// <summary>
-    /// Re-arms the hotkey and (while unlocked) the keyboard hook. Windows quietly
-    /// drops both after long idle or a sleep/resume: a low-level hook that missed
+    /// Re-arms the hotkey and the keyboard hook. Windows quietly drops both
+    /// after long idle or a sleep/resume: a low-level hook that missed
     /// LowLevelHooksTimeout is removed with no signal to us, and RegisterHotKey
     /// bindings can be lost across power transitions. Called on a watchdog timer
-    /// and on power-resume / session-unlock so the hotkey keeps working without
-    /// the user having to reopen a window.
+    /// and on power-resume / session-unlock so both keep working without the
+    /// user having to reopen a window.
     /// </summary>
     private void ReassertInput()
     {
-        // Only re-add the hook while unlocked: locked, it's firing on every key
-        // (so it's warm, not idle-dead), and reinstalling would open a brief gap
-        // where a keystroke could leak past the lock.
-        if (!_hook.IsLocked)
-            _hook.Reinstall(out _);
-        else
+        // Reinstall unconditionally — including while locked. Reinstall adds
+        // the new hook before dropping the old one, and hook callbacks only
+        // run when this thread pumps messages, so there is no instant during
+        // the swap where a keystroke can slip past the lock. The old behavior
+        // (skip while locked, on the theory the hook is "warm") left the one
+        // state where a silently-dropped hook actually leaks keys unrepaired
+        // for the whole session; this bounds that exposure to one tick.
+        _hook.Reinstall(out _);
+
+        if (_hook.IsLocked)
             // Checkpoint the running session's stats each tick so a crash or
             // force-kill while locked loses at most a minute, not the session.
             FlushLockStats();

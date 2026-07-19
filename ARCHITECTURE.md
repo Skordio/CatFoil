@@ -138,7 +138,7 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
 | Classic hotkey | `src/HotkeyManager.cs` | `RegisterHotKey` (with `MOD_NOREPEAT`) on a `NativeWindow`; fires only while unlocked. This is the sole lock trigger in classic mode. |
 | Chord hotkey | `src/KeyboardHook.cs` | Opt-in "Alt + C + F"-style chord, detected in **both** lock states inside the hook (`CompletesChord`), since RegisterHotKey can't express multi-key chords. The completing keystroke is swallowed; earlier chord keys leak to the focused app while unlocked (documented trade-off). |
 | Toggle plumbing | `src/TrayAppContext.cs` | `ToggleLock` (400 ms debounce, since lock and unlock use the same keys) → `SetLocked`. Sets hook lock state and updates UI/tray/overlay. |
-| Idle resilience | `src/TrayAppContext.cs` | A 60 s **watchdog** plus power-resume / session-unlock handlers re-arm the hotkey and (while unlocked) reinstall the hook, because Windows silently drops both after long idle or sleep. |
+| Idle resilience | `src/TrayAppContext.cs` | A 60 s **watchdog** plus power-resume / session-unlock handlers re-arm the hotkey and reinstall the hook — in both lock states — because Windows silently drops both after long idle or sleep. `Reinstall` adds the new hook before releasing the old, so the swap has no instant where a keystroke could slip past a lock. |
 
 `Ctrl + Alt + Del` cannot be blocked (Windows reserves it) and is documented as
 the always-available escape hatch.
