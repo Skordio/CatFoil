@@ -15,6 +15,8 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _chkStartMinimized = new();
     private readonly CheckBox _chkStartWithWindows = new();
     private readonly CheckBox _chkOverlay = new();
+    private readonly CheckBox _chkSoundLock = new();
+    private readonly CheckBox _chkSoundBlocked = new();
     private readonly CheckBox _chkAutoLock = new();
     private readonly NumericUpDown _numAutoLock = new();
     private readonly CheckBox _chkRunAsAdmin = new();
@@ -56,7 +58,7 @@ public sealed class SettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(512, 548);
+        ClientSize = new Size(512, 636);
         Font = DialogFont;
 
         // --- General ---
@@ -163,9 +165,14 @@ public sealed class SettingsForm : Form
         _numAutoLock.Enabled = _chkAutoLock.Checked;
         grpAutoLock.Controls.AddRange(new Control[] { _chkAutoLock, _numAutoLock, lblMinutes, lblAutoLockDetail });
 
+        // --- Sounds ---
+        var grpSounds = new GroupBox { Text = "Sounds", Bounds = new Rectangle(12, 506, 488, 78) };
+        AddCheck(grpSounds, _chkSoundLock, "Play a sound when locking and unlocking", 24, settings.SoundOnLockUnlock);
+        AddCheck(grpSounds, _chkSoundBlocked, "Play a sound when a key is blocked while locked", 50, settings.SoundOnBlockedKey);
+
         // --- Buttons ---
         _btnWelcome.Text = "Welcome tour…";
-        _btnWelcome.Bounds = new Rectangle(12, 508, 120, 30);
+        _btnWelcome.Bounds = new Rectangle(12, 596, 120, 30);
         _btnWelcome.TabStop = false;
         _btnWelcome.Click += (_, _) =>
         {
@@ -173,18 +180,18 @@ public sealed class SettingsForm : Form
             welcome.ShowDialog(this);
         };
         _btnApply.Text = "Apply";
-        _btnApply.Bounds = new Rectangle(233, 508, 85, 30);
+        _btnApply.Bounds = new Rectangle(233, 596, 85, 30);
         _btnApply.Click += (_, _) => PersistSettings();
         _btnSave.Text = "Save";
-        _btnSave.Bounds = new Rectangle(324, 508, 85, 30);
+        _btnSave.Bounds = new Rectangle(324, 596, 85, 30);
         _btnSave.Click += OnSaveClicked;
         _btnCancel.Text = "Cancel";
-        _btnCancel.Bounds = new Rectangle(415, 508, 85, 30);
+        _btnCancel.Bounds = new Rectangle(415, 596, 85, 30);
         _btnCancel.Click += (_, _) => Close();
         AcceptButton = _btnSave;
         CancelButton = _btnCancel;
 
-        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpAutoLock, _btnWelcome, _btnApply, _btnSave, _btnCancel });
+        Controls.AddRange(new Control[] { grpGeneral, grpHotkey, grpAutoLock, grpSounds, _btnWelcome, _btnApply, _btnSave, _btnCancel });
     }
 
     protected override void OnLoad(EventArgs e)
@@ -401,6 +408,8 @@ public sealed class SettingsForm : Form
         _settings.StartWithWindows = _chkStartWithWindows.Checked;
         _settings.StartElevatedOnBoot = _chkStartElevatedBoot.Checked;
         _settings.ShowOverlay = _chkOverlay.Checked;
+        _settings.SoundOnLockUnlock = _chkSoundLock.Checked;
+        _settings.SoundOnBlockedKey = _chkSoundBlocked.Checked;
         _settings.AutoLockEnabled = _chkAutoLock.Checked;
         _settings.AutoLockMinutes = (int)_numAutoLock.Value;
         _settings.HotkeyEnabled = _chkHotkeyEnabled.Checked;

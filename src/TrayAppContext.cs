@@ -36,6 +36,7 @@ public sealed class TrayAppContext : ApplicationContext
     private RegisteredWaitHandle? _showWait;
     private int _lastToggleTick;
     private int _lockStartTick;
+    private int _lastBlockedSoundTick;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
@@ -156,6 +157,7 @@ public sealed class TrayAppContext : ApplicationContext
             _lockStartTick = Environment.TickCount;
             _settings.StatLockSessions++;
             _settings.Save();
+            if (_settings.SoundOnLockUnlock) Sounds.Lock();
             _mainForm.SetLockedUi(true);
             _overlay.SetActive(_settings.ShowOverlay);
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
@@ -167,6 +169,7 @@ public sealed class TrayAppContext : ApplicationContext
             _timedSecondsLeft = 0;
             _hook.Unlock();
             FlushLockStats();
+            if (_settings.SoundOnLockUnlock) Sounds.Unlock();
             _overlay.SetActive(false);
             _overlay.SetRemaining(null);
             _mainForm.SetLockedUi(false);
@@ -250,6 +253,17 @@ public sealed class TrayAppContext : ApplicationContext
             ShowMainWindow();
 
         _overlay.FlashBlockedKey();
+
+        // Throttle the blocked-key sound so a held key doesn't machine-gun it.
+        if (_settings.SoundOnBlockedKey)
+        {
+            int now = Environment.TickCount;
+            if (unchecked(now - _lastBlockedSoundTick) >= 700)
+            {
+                _lastBlockedSoundTick = now;
+                Sounds.Blocked();
+            }
+        }
     }
 
     // ---------------------------------------------------------------

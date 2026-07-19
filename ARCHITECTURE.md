@@ -176,6 +176,7 @@ on, the Run key is suppressed so they don't both launch at logon.
 - Optional **auto-lock after inactivity** (idle for N minutes, mouse activity resets it).
 - **Timed lock** ("Lock for…" tray submenu) with an auto-unlock countdown.
 - **Lifetime statistics** — lock sessions, total locked time, and blocked-key count.
+- Optional **sound cues** on lock/unlock and blocked keys (Windows system sounds).
 - Single-instance; second launch resurfaces the running one.
 
 ---
