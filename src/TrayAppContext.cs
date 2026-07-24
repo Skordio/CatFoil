@@ -38,6 +38,8 @@ public sealed class TrayAppContext : ApplicationContext
     private int _lastToggleTick;
     private int _lockStartTick;
     private int _lastBlockedSoundTick;
+    // True while the settings window is listening for a new hotkey binding.
+    private bool _hotkeyCapture;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
@@ -356,11 +358,34 @@ public sealed class TrayAppContext : ApplicationContext
         };
         // The elevated relaunch is already running; quit so it can take over.
         _settingsForm.RestartElevatedRequested += ExitApp;
+        _settingsForm.HotkeyCaptureChanged += OnHotkeyCaptureChanged;
         _settingsForm.Show();
+    }
+
+    /// <summary>
+    /// Stop and resume listening for the hotkey while the settings window binds
+    /// a new one. Settings applies edits immediately, so without this the combo
+    /// the user just bound is live again on the next keystroke — and pressing it
+    /// to try another binding would toggle the lock instead of reaching the box.
+    /// </summary>
+    private void OnHotkeyCaptureChanged(bool capturing)
+    {
+        _hotkeyCapture = capturing;
+        ApplyHotkeySettings(announceFailure: false);
     }
 
     private void ApplyHotkeySettings(bool announceFailure = true)
     {
+        // Binding a new hotkey: nothing should be listening. Guarding here
+        // rather than at the call sites covers the watchdog and the settings
+        // window's live-apply, which both land in here every few seconds.
+        if (_hotkeyCapture)
+        {
+            _hotkey.Unregister();
+            _hook.SetChordKeys(Array.Empty<Keys>());
+            return;
+        }
+
         // Chord mode: our hook detects the combo in both lock states and
         // RegisterHotKey is retired (it can't express multi-key chords).
         if (_settings.HotkeyEnabled && _settings.UseChordHotkey && _settings.ChordKeys.Length >= 2)
@@ -379,7 +404,7 @@ public sealed class TrayAppContext : ApplicationContext
             if (!_hotkey.Register(_settings.Hotkey) && announceFailure)
             {
                 _tray?.ShowBalloonTip(3000, "CatFoil",
-                    "Could not register the hotkey " + SettingsForm.FormatHotkey(_settings.Hotkey) +
+                    "Could not register the hotkey " + HotkeyText.Format(_settings.Hotkey) +
                     " — another app may already be using it.", ToolTipIcon.Warning);
             }
         }

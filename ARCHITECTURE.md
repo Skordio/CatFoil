@@ -48,34 +48,56 @@ Behaviors:
 - **Timed-lock countdown**: `ShowLockCountdown` appends "Auto-unlock in m:ss"
   while a user-chosen "Lock for N minutes" runs.
 
-### 2.2 Settings window — `src/SettingsForm.cs`
-A fixed-size dialog (512×636), lazily created and reused by the tray. Groups:
+### 2.2 Settings window — `src/SettingsForm.cs` + `src/Pages/`
+A resizable window (796×540, min 700×480), lazily created and reused by the tray.
+`SettingsForm` itself is only a **shell**: an owner-drawn navigation list on the
+left and one page at a time on the right. Each page is a `SettingsPage`
+(`src/Pages/`), so adding a setting is a row on a page rather than a re-layout of
+one fixed-pixel dialog. Pages are parented on first visit, which is what defers
+Advanced's `schtasks.exe` query until the user goes there.
 
-- **General**: checkboxes — Hide to tray on close · Start hidden in tray ·
-  Start CatFoil when Windows starts · Show the cat overlay while locked · **Run as
-  administrator (also block elevated windows)** with an indented sub-option **Start
-  automatically at logon, elevated (no prompt)** — plus a **"Customize overlay…"**
-  button opening the overlay menu. Checking "Run as administrator" relaunches
-  CatFoil elevated (UAC prompt) so its hook can also block elevated foreground
-  windows; if already elevated the box is checked and disabled. The elevated-logon
-  sub-option (enabled only while elevated) creates a Task Scheduler task that starts
-  CatFoil elevated at logon with no prompt. See §7.
-- **Hotkey**: enable checkbox · a click-to-capture hotkey box ("press keys") ·
-  a **Multi-key chord** checkbox (with a tooltip explaining the leak-through
-  trade-off). Capture logic differs for classic vs chord mode.
-- **Auto-lock**: enable checkbox + a minutes selector — locks after that long
-  with no keyboard or mouse activity.
-- **Sounds**: two checkboxes — play a sound on lock/unlock · play a (throttled)
-  sound when a key is blocked while locked. Both use the user's Windows system
-  sounds (tooltip points at the Windows sound settings if the mapped events
-  are "(None)").
+`SettingsPage` (`src/Pages/SettingsPage.cs`) is the base: a single auto-sizing
+column inside an `AutoScroll` panel, with `AddSection` / `AddCheck` / `AddHint` /
+`AddRow` helpers and shared static fonts (a settings window can be reopened
+repeatedly, and WinForms never disposes a Font assigned to a control).
 
-Bottom row: **Welcome tour…** · **Apply** (persist without closing) ·
-**Save** (persist + close) · **Cancel**. Save/Apply both call `PersistSettings()`,
-which writes settings and raises `SettingsSaved` so the tray applies changes live.
+Pages:
+- **General** — Hide to tray on close · Start CatFoil when Windows starts ·
+  Start hidden in the system tray.
+- **Locking** — hotkey enable checkbox · a click-to-capture hotkey box
+  ("press keys") · a **Multi-key chord** checkbox (tooltip explains the
+  leak-through trade-off); capture logic differs for classic vs chord mode.
+  Then auto-lock: enable checkbox + minutes selector.
+- **Overlays** — Show the cat overlay while locked, plus the **"Customize
+  overlay…"** button opening §2.3.
+- **Sounds** — play a sound on lock/unlock · play a (throttled) sound when a key
+  is blocked while locked. Both use the user's Windows system sounds (tooltip
+  points at the Windows sound settings if the mapped events are "(None)").
+- **Advanced** — **Run as administrator (also block elevated windows)** with an
+  indented sub-option **Start automatically at logon, elevated (no prompt)**.
+  Checking "Run as administrator" relaunches CatFoil elevated (UAC prompt) so its
+  hook can also block elevated foreground windows; if already elevated the box is
+  checked and disabled. The elevated-logon sub-option (enabled only while
+  elevated) creates a Task Scheduler task. See §7.
+- **About** — version, and the **Welcome tour…** button.
+
+**Immediate-apply — there is no Save/Cancel.** Pages mutate through
+`SettingsSession` (`src/SettingsSession.cs`), which owns the live `Settings`
+object: `Apply()` makes the edit, raises `Changed` at once (the form re-raises it
+as `SettingsSaved`, so the tray applies it live), and schedules the disk write on
+a 500 ms debounce so dragging a spinner doesn't write settings.json per tick.
+`Flush()` forces the pending write — called on form close and before an elevated
+relaunch hands off. Escape closes the window.
+
+While the hotkey box has focus the form raises `HotkeyCaptureChanged(true)`; the
+tray suspends the current hotkey until it goes false, so the combo being rebound
+lands in the box instead of toggling the lock (`ApplyHotkeySettings` guards on
+`_hotkeyCapture`, which also covers the 60 s watchdog). Hotkey display strings
+live in `src/HotkeyText.cs`, shared with the main window, welcome tour and tray
+balloons.
 
 ### 2.3 Overlay customization menu — `src/OverlaySettingsForm.cs`
-A dialog (652×746) opened from Settings → "Customize overlay…". Two mirrored
+A dialog (652×746) opened from Settings → Overlays → "Customize overlay…". Two mirrored
 **state editors** (`StateEditor`):
 - **Normal (no fullscreen app)**
 - **When a fullscreen app is running**
@@ -89,7 +111,7 @@ the two `OverlayStateSettings` are written, and `SettingsSaved` is raised.
 
 ### 2.4 Welcome window — `src/WelcomeForm.cs`
 Shown once on first launch (flag `Settings.WelcomeShown`), and re-openable from
-Settings → "Welcome tour…". A scrolling tour (auto-sized to content, since the
+Settings → About → "Welcome tour…". A scrolling tour (auto-sized to content, since the
 hotkey string is variable): what CatFoil does, Locking, Unlocking, the cat badge,
 and the tray icon. Single **Get started** button.
 
@@ -265,7 +287,7 @@ artifact destined for the Microsoft Store; the portable is a GitHub-Releases-onl
 The build scripts share `scripts/_common.ps1` (publish, version, locate ISCC), and
 `scripts/build-release.ps1` — the per-release command — publishes **once** and emits both the
 portable EXE and the installer, so the two are byte-for-byte the same binary and can never
-drift. The version comes from `<Version>` in `CatFoil.csproj` (currently `0.3.0`) so the EXE
+drift. The version comes from `<Version>` in `CatFoil.csproj` (currently `0.4.0`) so the EXE
 metadata and every artifact filename always match. The installer is **offline** (payload
 bundled) and **silent-capable** (`/VERYSILENT`), which are the two hard requirements for the
 Microsoft Store's **MSI/EXE submission path** — so the same installer can be listed on the

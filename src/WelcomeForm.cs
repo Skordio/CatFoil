@@ -29,7 +29,7 @@ public sealed class WelcomeForm : Form
         Font = FormFont;
         BackColor = Color.FromArgb(245, 245, 245);
 
-        string hotkey = string.Join(" + ", SettingsForm.ActiveHotkeyParts(settings));
+        string hotkey = string.Join(" + ", HotkeyText.ActiveParts(settings));
 
         var flow = new FlowLayoutPanel
         {
