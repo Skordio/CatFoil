@@ -13,6 +13,15 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // Uninstaller cleanup pass: deregister our logon startup entries and
+        // exit. Runs before the mutex is even created, so it works regardless
+        // of what other instances are doing.
+        if (Array.IndexOf(args, Startup.UninstallCleanupFlag) >= 0)
+        {
+            Startup.UninstallCleanup();
+            return;
+        }
+
         // If this is an elevation relaunch, wait for the old (non-elevated)
         // instance to fully exit and release the single-instance slot first.
         WaitForPredecessor(args);

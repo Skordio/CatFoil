@@ -83,3 +83,15 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 ; runasoriginaluser: after a per-machine (elevated) install, launch CatFoil as the
 ; normal user rather than elevated — it self-elevates on demand if/when needed.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+[UninstallRun]
+; The app registers its own logon startup at runtime (an HKCU Run value and/or
+; an elevated scheduled task), so the uninstaller must ask it to deregister —
+; this runs first, before files are removed, and waits for the EXE to finish.
+; The cleanup is path-guarded in the app: it only deletes registrations that
+; point at this install's EXE, leaving e.g. a portable copy's alone. The
+; elevated task is deletable even unelevated because its author is the user.
+; Known limitation: after a per-machine install, an uninstall run by a
+; DIFFERENT admin account can't reach the original user's HKCU/task — those
+; survive; unavoidable without enumerating users.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--uninstall-cleanup"; RunOnceId: "StartupCleanup"; Flags: runhidden

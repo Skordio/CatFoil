@@ -83,6 +83,72 @@ internal static class Startup
         return code == 0 || !TaskExists();   // non-zero can just mean "not found"
     }
 
+    // ---------------------------------------------------------------
+    // Uninstall cleanup (run by the installer's [UninstallRun] entry)
+    // ---------------------------------------------------------------
+
+    /// <summary>Switch the uninstaller passes to remove this EXE's logon
+    /// registrations before the EXE itself is deleted. Also usable by hand
+    /// from a portable copy to deregister it.</summary>
+    public const string UninstallCleanupFlag = "--uninstall-cleanup";
+
+    /// <summary>
+    /// Deletes the Run value and the elevated task, but only when they point
+    /// at THIS executable — a registration made by a different copy (e.g. the
+    /// portable EXE alongside an install) is not ours to remove. Best-effort:
+    /// the uninstall must proceed no matter what fails here.
+    /// </summary>
+    public static void UninstallCleanup()
+    {
+        string exe = Application.ExecutablePath;
+
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            if (key?.GetValue(RunValueName) is string value &&
+                string.Equals(value.Trim('"'), exe, StringComparison.OrdinalIgnoreCase))
+                key.DeleteValue(RunValueName, throwOnMissingValue: false);
+        }
+        catch
+        {
+            // Registry access denied — leave it; not worth failing the uninstall.
+        }
+
+        // The exported task XML escapes '&' etc., so accept the raw or the
+        // escaped spelling of the path. Any mismatch (or query failure) errs
+        // toward leaving the task in place.
+        if (RunSchtasksCapture($"/Query /TN \"{TaskName}\" /XML", out string xml) == 0 &&
+            (xml.Contains(exe, StringComparison.OrdinalIgnoreCase) ||
+             xml.Contains(SecurityElement.Escape(exe), StringComparison.OrdinalIgnoreCase)))
+            DisableTask();
+    }
+
+    private static int RunSchtasksCapture(string args, out string stdout)
+    {
+        stdout = "";
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo
+            {
+                FileName = "schtasks.exe",
+                Arguments = args,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+            });
+            if (p is null) return -1;
+            // Unlike RunSchtasks we do redirect here — but drain the pipe to
+            // end-of-stream BEFORE waiting, which is what makes it deadlock-free.
+            stdout = p.StandardOutput.ReadToEnd();
+            if (!p.WaitForExit(10000)) return -1;
+            return p.ExitCode;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     private static int RunSchtasks(string args)
     {
         try

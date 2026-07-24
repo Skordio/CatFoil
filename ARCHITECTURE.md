@@ -162,6 +162,14 @@ Startup is managed by `src/Startup.cs`: "Start with Windows" is an
 with highest privileges. The two are mutually exclusive — when the elevated task is
 on, the Run key is suppressed so they don't both launch at logon.
 
+Both registrations can be removed with `CatFoil.exe --uninstall-cleanup`
+(`Startup.UninstallCleanup`, handled in `Program.Main` before the single-instance
+mutex): it deletes the Run value and the task **only when they point at the
+invoking EXE**, so an installed copy's uninstall never touches a portable copy's
+registration. The installer's `[UninstallRun]` entry invokes it on uninstall; the
+elevated task is deletable even unelevated because its author is the user's own
+account.
+
 ---
 
 ## 6. Feature checklist
@@ -247,7 +255,12 @@ artifact destined for the Microsoft Store; the portable is a GitHub-Releases-onl
   the self-locking EXE without a reboot. The `asInvoker` manifest is unchanged — the app still
   self-elevates on demand (§7), so even a no-admin per-user install can block elevated windows.
   The post-install launch uses `runasoriginaluser` so an all-users (elevated) install still
-  starts CatFoil as the normal user.
+  starts CatFoil as the normal user. On uninstall, an `[UninstallRun]` entry runs the
+  still-installed EXE with `--uninstall-cleanup` (before file removal) so the runtime-created
+  startup registrations — the HKCU `Run` value and the elevated scheduled task — don't survive
+  as orphans firing against a deleted EXE (path-guarded; see §5). Known limitation: a
+  per-machine uninstall run by a *different* admin account can't reach the original user's
+  HKCU/task.
 
 The build scripts share `scripts/_common.ps1` (publish, version, locate ISCC), and
 `scripts/build-release.ps1` — the per-release command — publishes **once** and emits both the
