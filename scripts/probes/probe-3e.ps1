@@ -10,6 +10,16 @@ $ProbeOut   = Join-Path $RepoRoot 'artifacts\probes'
 $ProbeShots = Join-Path $ProbeOut 'shots'
 New-Item -ItemType Directory -Force -Path $ProbeShots | Out-Null
 if (-not (Test-Path $CatFoilDll)) { throw "Build first - not found: $CatFoilDll" }
+# SAFETY NET. Settings.Save() writes the user's REAL settings.json --
+# GetFolderPath uses the shell API, ignores $env:APPDATA and cannot be pointed
+# elsewhere. A probe that edits a setting and then pumps for longer than the
+# 500 ms debounce is enough to trigger it, which is easy to do by accident and
+# silently destroys live configuration. Snapshot the file and put it back
+# however this script exits, so the rule is enforced rather than remembered.
+$LiveSettings   = Join-Path (Join-Path $env:APPDATA 'CatFoil') 'settings.json'
+$SettingsBackup = if (Test-Path $LiveSettings) { [IO.File]::ReadAllBytes($LiveSettings) } else { $null }
+try {
+
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -154,3 +164,20 @@ $fallback.Dispose()
 
 Write-Host ''
 if ($fails -eq 0) { Write-Host 'ALL PASS' -ForegroundColor Green } else { Write-Host "$fails FAILED" -ForegroundColor Red; exit 1 }
+
+}
+finally {
+    # Restore byte-for-byte, including the case where there was no file at all.
+    if ($null -ne $SettingsBackup) {
+        $now = if (Test-Path $LiveSettings) { [IO.File]::ReadAllBytes($LiveSettings) } else { $null }
+        $same = ($null -ne $now) -and ($now.Length -eq $SettingsBackup.Length)
+        if ($same) { for ($i = 0; $i -lt $now.Length; $i++) { if ($now[$i] -ne $SettingsBackup[$i]) { $same = $false; break } } }
+        if (-not $same) {
+            [IO.File]::WriteAllBytes($LiveSettings, $SettingsBackup)
+            Write-Host 'NOTE: this probe wrote settings.json; the original has been restored.' -ForegroundColor Yellow
+        }
+    }
+    elseif (Test-Path $LiveSettings) {
+        Remove-Item $LiveSettings -Force
+    }
+}

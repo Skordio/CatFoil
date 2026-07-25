@@ -18,9 +18,16 @@ Screenshots and render baselines land in `artifacts\probes\` (gitignored).
 **Never let `Settings.Save()` run.** `Environment.GetFolderPath(ApplicationData)`
 uses the shell API and ignores `$env:APPDATA`, so a probe *cannot* be pointed at
 a scratch settings file — any save overwrites the real one. Probes therefore
-dispose forms rather than closing them (closing flushes), never pump past the
+dispose forms rather than closing them (closing flushes), avoid pumping past the
 500 ms debounce after an edit, and test the settings model by handing JSON
 strings straight to `JsonSerializer` + `EnsureOverlays()`.
+
+That rule is **enforced, not remembered**: every probe snapshots settings.json at
+startup and restores it byte-for-byte in a `finally`, printing a NOTE if it had
+to. This is not belt-and-braces — `probe-3d` really did destroy a live
+settings.json by driving the editor UI and then pumping longer than the debounce,
+which is a very easy mistake to make and leaves no trace that anything happened.
+Keep the guard on any new probe that builds a `SettingsForm`.
 
 **`-STA` and pwsh 7.** Windows PowerShell 5.1 can't load the .NET 8 assembly and
 fails by handing back a null form, which looks like a pass.
@@ -65,3 +72,10 @@ fails by handing back a null form, which looks like a pass.
 baseline with `-Mode baseline` **before** a change you intend to be invisible,
 then `-Mode check` after. `-Scale` is the alpha the layered window applied on top
 of `Draw` when the baseline was taken: 255 since opacity moved into the renderer.
+
+One wrinkle seen once and not explained: a seeded baseline had `countdown64`
+differing in RGB while alpha matched exactly — the signature of the text being
+rendered with subpixel antialiasing in one run and grayscale in the other, even
+though `Draw` sets `TextRenderingHint.AntiAlias` explicitly. Re-seeding fixed it
+and it has been stable since. If `countdown64` alone reports a large RGB delta
+with **zero** alpha delta, suspect the baseline before suspecting the renderer.
