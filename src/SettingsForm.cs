@@ -330,6 +330,7 @@ public sealed class SettingsForm : Form
         // rather than done when an overlay is removed, so removing one and
         // changing your mind inside the same visit doesn't cost you the image.
         IconStore.CollectGarbage(_session.Settings);
+        SoundStore.CollectGarbage(_session.Settings);
 
         base.OnFormClosed(e);
     }

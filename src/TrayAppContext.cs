@@ -158,7 +158,7 @@ public sealed class TrayAppContext : ApplicationContext
             _lockStartTick = Environment.TickCount;
             _settings.StatLockSessions++;
             _settings.Save();
-            if (_settings.SoundOnLockUnlock) Sounds.Lock();
+            Sounds.Lock(_settings);
             _mainForm.SetLockedUi(true);
             ApplyOverlayActivation();
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
@@ -170,7 +170,7 @@ public sealed class TrayAppContext : ApplicationContext
             _timedSecondsLeft = 0;
             _hook.Unlock();
             FlushLockStats();
-            if (_settings.SoundOnLockUnlock) Sounds.Unlock();
+            Sounds.Unlock(_settings);
             ApplyOverlayActivation();   // the hook is already unlocked, so all badges go away
             SetOverlayRemaining(null);
             _mainForm.SetLockedUi(false);
@@ -260,13 +260,13 @@ public sealed class TrayAppContext : ApplicationContext
         foreach (OverlayForm form in _overlayForms) form.FlashBlockedKey();
 
         // Throttle the blocked-key sound so a held key doesn't machine-gun it.
-        if (_settings.SoundOnBlockedKey)
+        if (_settings.BlockedSound.Enabled)
         {
             int now = Environment.TickCount;
             if (unchecked(now - _lastBlockedSoundTick) >= BlockedSoundThrottleMs)
             {
                 _lastBlockedSoundTick = now;
-                Sounds.Blocked();
+                Sounds.Blocked(_settings);
             }
         }
     }
@@ -552,6 +552,8 @@ public sealed class TrayAppContext : ApplicationContext
         _tray.Visible = false;
         _hotkey.Dispose();
         _hook.Dispose();
+        // MCI handles are process-wide and hold the audio files open.
+        AudioPlayer.CloseAll();
         _mainForm.AllowClose = true;
         foreach (OverlayForm form in _overlayForms) form.Close();
         _overlayForms.Clear();

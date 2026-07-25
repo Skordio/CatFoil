@@ -49,7 +49,7 @@ Behaviors:
   while a user-chosen "Lock for N minutes" runs.
 
 ### 2.2 Settings window — `src/SettingsForm.cs` + `src/Pages/`
-A resizable window (796×540, min 700×480), lazily created and reused by the tray.
+A resizable window (900×720, min 840×560), lazily created and reused by the tray.
 `SettingsForm` itself is only a **shell**: an owner-drawn navigation list on the
 left and one page at a time on the right. Each page is a `SettingsPage`
 (`src/Pages/`), so adding a setting is a row on a page rather than a re-layout of
@@ -92,9 +92,13 @@ Pages:
   its `Position` null so it cascades rather than landing on top. The page is
   rebuilt wholesale on each change, deferred via `BeginInvoke` because the
   actions are raised from a card that the rebuild disposes.
-- **Sounds** — play a sound on lock/unlock · play a (throttled) sound when a key
-  is blocked while locked. Both use the user's Windows system sounds (tooltip
-  points at the Windows sound settings if the mapped events are "(None)").
+- **Sounds** — three **independent** cues (locking · unlocking · a key blocked
+  while locked), each with its own source, volume and **Test** button. A cue is
+  either one of the user's Windows scheme sounds (tooltip points at the Windows
+  sound settings if those events are "(None)") or a file of their own (§5.4).
+  Volume applies only to a custom file — a scheme sound plays at whatever the
+  system mixer says — so it greys out when the Windows sound is selected. The
+  blocked cue is still throttled so a held key can't machine-gun it.
 - **Advanced** — **Run as administrator (also block elevated windows)** with an
   indented sub-option **Start automatically at logon, elevated (no prompt)**.
   Checking "Run as administrator" relaunches CatFoil elevated (UAC prompt) so its
@@ -109,10 +113,10 @@ object: `Apply()` makes the edit, raises `Changed` at once (the form re-raises i
 as `SettingsSaved`, so the tray applies it live), and schedules the disk write on
 a 500 ms debounce so dragging a spinner doesn't write settings.json per tick.
 `Flush()` forces the pending write — called on form close and before an elevated
-relaunch hands off. Closing the window also runs `IconStore.CollectGarbage`
-(§5.3): sweeping orphaned overlay images is deferred to here rather than done
-when an overlay is removed, so removing one and changing your mind inside the
-same visit doesn't cost you the image.
+relaunch hands off. Closing the window also sweeps unreferenced overlay images
+and cue audio (`IconStore`/`SoundStore.CollectGarbage`, §5.3/§5.4). That is
+deferred to here rather than done when an item is removed, so removing one and
+changing your mind inside the same visit doesn't cost you the file.
 
 While the hotkey box has focus the form raises `HotkeyCaptureChanged(true)`; the
 tray suspends the current hotkey until it goes false, so the combo being rebound
@@ -361,6 +365,29 @@ registration. The installer's `[UninstallRun]` entry invokes it on uninstall; th
 elevated task is deletable even unelevated because its author is the user's own
 account.
 
+
+### 5.4 Audio cues — `src/Sounds.cs`, `src/AudioPlayer.cs`, `src/SoundStore.cs`
+
+`Settings` holds three `SoundSetting`s (`LockSound` / `UnlockSound` /
+`BlockedSound`): Enabled · Source (System / Custom) · File · Volume. 0.3 had two
+bools, `SoundOnLockUnlock` and `SoundOnBlockedKey`; `EnsureSounds()` folds them
+in — the first lights *both* halves of the lock/unlock pair — under the same two
+rules as the overlay migrations: keyed strictly on `HasValue`, and idempotent, so
+a deliberately silenced cue is never switched back on.
+
+**Playback is MCI (`winmm`), not `SoundPlayer`.** `SoundPlayer` is WAV-only with
+no volume control, and a decoder library would break the zero-NuGet rule; the
+price is a little P/Invoke over MCI's string command interface. Each cue has a
+stable alias, so retriggering restarts it rather than layering, while the three
+cues can still overlap. **Anything unplayable falls back to the Windows scheme
+sound** — a missing file, an undecodable one, or no `winmm` at all — because
+silence would look like the feature simply not working. `AudioPlayer.CloseAll()`
+runs on exit: MCI handles are process-wide and hold the files open.
+
+`SoundStore` mirrors `IconStore` exactly — imports copied into
+`%APPDATA%\CatFoil\sounds` under unique names, paths stored relative to
+`Settings.Directory`, and unreferenced files swept when the settings window
+closes.
 ---
 
 ## 6. Feature checklist

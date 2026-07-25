@@ -40,9 +40,19 @@ public sealed class Settings
     public bool StartMinimized { get; set; }
     public bool ShowOverlay { get; set; } = true;
 
-    // Optional audio cues (uses the user's Windows system sounds).
-    public bool SoundOnLockUnlock { get; set; }
-    public bool SoundOnBlockedKey { get; set; }
+    // Optional audio cues. Each event is independent so "tell me when it locks"
+    // doesn't force "tell me when it unlocks" too.
+    public SoundSetting LockSound { get; set; } = new();
+    public SoundSetting UnlockSound { get; set; } = new();
+    public SoundSetting BlockedSound { get; set; } = new();
+
+    // --- Legacy (0.3 and earlier) -------------------------------------------
+    // One flag covered lock+unlock together and another covered blocked keys.
+    // Read once, folded in by EnsureSounds, then nulled.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? SoundOnLockUnlock { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? SoundOnBlockedKey { get; set; }
 
     // Auto-lock the keyboard after a stretch of no keyboard/mouse input, so
     // walking away leaves it protected without remembering to lock.
@@ -87,7 +97,37 @@ public sealed class Settings
             loaded = new Settings();
         }
         loaded.EnsureOverlays();
+        loaded.EnsureSounds();
         return loaded;
+    }
+
+    /// <summary>
+    /// Repairs the per-event sound settings and folds in the two legacy flags.
+    /// Idempotent, like <see cref="EnsureOverlays"/>.
+    /// </summary>
+    public void EnsureSounds()
+    {
+        // Hand-editable text, so the annotations can't be trusted.
+        LockSound ??= new SoundSetting();
+        UnlockSound ??= new SoundSetting();
+        BlockedSound ??= new SoundSetting();
+
+        // Keyed on the legacy flag still being present, never on the new value
+        // "looking default" — otherwise deliberately turning a cue off would be
+        // undone the next time this ran.
+        if (SoundOnLockUnlock.HasValue)
+        {
+            // One flag used to mean both halves of the pair.
+            LockSound.Enabled = SoundOnLockUnlock.Value;
+            UnlockSound.Enabled = SoundOnLockUnlock.Value;
+            SoundOnLockUnlock = null;
+        }
+
+        if (SoundOnBlockedKey.HasValue)
+        {
+            BlockedSound.Enabled = SoundOnBlockedKey.Value;
+            SoundOnBlockedKey = null;
+        }
     }
 
     /// <summary>
@@ -281,6 +321,37 @@ public sealed class OverlayStateSettings
     /// complete one.
     /// </summary>
     public OverlayStateSettings Clone() => (OverlayStateSettings)MemberwiseClone();
+}
+
+/// <summary>Where a cue's audio comes from.</summary>
+public enum SoundSource
+{
+    // System is the zero value: an unreadable source falls back to the Windows
+    // scheme sound, which always works and needs no file.
+    System,
+    Custom,
+}
+
+/// <summary>One audio cue: whether it plays, what it plays, and how loudly.</summary>
+public sealed class SoundSetting
+{
+    public bool Enabled { get; set; }
+
+    [JsonConverter(typeof(LenientEnumConverter<SoundSource>))]
+    public SoundSource Source { get; set; } = SoundSource.System;
+
+    /// <summary>Path relative to <see cref="Settings.Directory"/>, as for icons.</summary>
+    public string? File { get; set; }
+
+    /// <summary>Applies to custom files only — Windows scheme sounds play at
+    /// whatever the system mixer says.</summary>
+    public int Volume { get; set; } = 80;
+
+    public int ClampedVolume() => Math.Clamp(Volume, 0, 100);
+
+    /// <summary>See <see cref="OverlayStateSettings.Clone"/> for why this is
+    /// memberwise rather than a hand-written field list.</summary>
+    public SoundSetting Clone() => (SoundSetting)MemberwiseClone();
 }
 
 /// <summary>Where a badge's picture comes from.</summary>

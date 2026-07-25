@@ -13,6 +13,7 @@ $probes = @(
   'probe-render'          # badge output vs the captured baseline
   'probe-3c'              # opacity, shape, colour, blocked/ring opacity
   'probe-3e'              # built-in icon gallery
+  'probe-sounds'          # sound settings, migration, MCI player, Sounds page
   'probe-multi-overlay'   # several live badges at once
   'probe-settings'        # settings shell renders every page
   'probe-behavior'        # immediate-apply plumbing
