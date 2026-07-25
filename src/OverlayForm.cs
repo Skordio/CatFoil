@@ -85,6 +85,11 @@ public sealed class OverlayForm : Form
     private Size _paintedSize;
     private string? _paintedText;
     private bool _paintedFlash;
+    // Tracked separately from _paintedFlash: the blocked window opens with the
+    // ring in its *off* phase, so without this the first paint after a blocked
+    // key sees nothing changed and the blocked opacity wouldn't appear until the
+    // first blink 120 ms later — a quarter of the effect, silently missing.
+    private bool _paintedBlocked;
 
     private bool _dragging;
     private bool _moved;
@@ -267,16 +272,21 @@ public sealed class OverlayForm : Form
     // badge actually shows has changed since the last paint.
     private void RenderIfChanged()
     {
-        bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
+        // The ring blinks; the blocked state is held for the whole window. Both
+        // are derived here and passed down, so the two can't drift apart.
+        bool blocked = _flashTimer.Enabled;
+        bool flashOn = blocked && _flashTicks % 2 == 1;
+
         if (ReferenceEquals(_paintedState, _currentState)
             && ReferenceEquals(_paintedIcon, _currentIcon)
             && _paintedSize == ClientSize
             && _paintedText == _remainingText
-            && _paintedFlash == flashOn)
+            && _paintedFlash == flashOn
+            && _paintedBlocked == blocked)
         {
             return;
         }
-        RenderLayered();
+        RenderLayered(flashOn, blocked);
     }
 
     // True when the foreground window belongs to CatFoil itself (Settings,
@@ -311,20 +321,19 @@ public sealed class OverlayForm : Form
     }
 
     // Paint the badge into a 32bpp ARGB bitmap and push it to the layered window.
-    private void RenderLayered()
+    private void RenderLayered(bool flashOn, bool blocked)
     {
         if (!IsHandleCreated || _currentIcon is null) return;
 
         int w = ClientSize.Width, h = ClientSize.Height;
         if (w <= 0 || h <= 0) return;
 
-        bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
-
         using var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
         {
             g.Clear(Color.Transparent);
-            OverlayRenderer.Draw(g, new Rectangle(0, 0, w, h), _currentState, _currentIcon, _remainingText, flashOn);
+            OverlayRenderer.Draw(g, new Rectangle(0, 0, w, h), _currentState, _currentIcon,
+                _remainingText, flashOn, blocked);
         }
 
         // Remember exactly what this paint represents, so RenderIfChanged can skip
@@ -334,6 +343,7 @@ public sealed class OverlayForm : Form
         _paintedSize = ClientSize;
         _paintedText = _remainingText;
         _paintedFlash = flashOn;
+        _paintedBlocked = blocked;
 
         IntPtr screenDc = GetDC(IntPtr.Zero);
         IntPtr memDc = CreateCompatibleDC(screenDc);

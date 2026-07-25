@@ -45,12 +45,6 @@ public static class OverlayRenderer
     public static int CornerRadius(int size) => Math.Max(4, size / 4);
 
     /// <summary>
-    /// The opacity the badge is drawn at. Until it becomes a per-state setting
-    /// this reproduces the 235/255 the layered window used to apply itself.
-    /// </summary>
-    private const int BadgeOpacity = 92;
-
-    /// <summary>
     /// Converts a percentage to the alpha byte to multiply by. 92 lands exactly
     /// on 235, which is what the overlay window applied before opacity moved in
     /// here — so the default is bit-for-bit the old appearance.
@@ -58,8 +52,12 @@ public static class OverlayRenderer
     public static byte OpacityAlpha(int percent) =>
         (byte)Math.Round(255.0 * Math.Clamp(percent, 0, 100) / 100.0);
 
+    /// <param name="flashOn">The blink phase of the blocked-key ring.</param>
+    /// <param name="blocked">True for the whole blocked-key window, not just the
+    /// blink phase — this is what the separate blocked opacity follows, so the
+    /// badge holds its reaction steady while the ring pulses.</param>
     public static void Draw(Graphics g, Rectangle bounds, OverlayStateSettings state,
-        Bitmap icon, string? remainingText, bool flashOn)
+        Bitmap icon, string? remainingText, bool flashOn, bool blocked = false)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
@@ -88,11 +86,16 @@ public static class OverlayRenderer
                     lg.TextRenderingHint = TextRenderingHint.AntiAlias;
                     lg.Clear(Color.Transparent);
                     DrawBadge(lg, new Rectangle(0, 0, bounds.Width, bounds.Height),
-                              state, icon, remainingText, radius, flashOn);
+                              state, icon, remainingText, radius);
                 }
 
-                DrawFaded(g, layer, bounds, OpacityAlpha(BadgeOpacity));
+                DrawFaded(g, layer, bounds, OpacityAlpha(state.EffectiveOpacity(blocked)));
             }
+
+            // Outside the fade, and with its own opacity: the ring is the
+            // blocked-key signal, so dimming the badge to react to a keypress
+            // must not dim the very thing announcing it.
+            if (flashOn) DrawFlashRing(g, bounds, state, radius);
         }
         finally
         {
@@ -118,8 +121,11 @@ public static class OverlayRenderer
         g.DrawImage(layer, bounds, 0, 0, layer.Width, layer.Height, GraphicsUnit.Pixel, attrs);
     }
 
-    private static void DrawFlashRing(Graphics g, Rectangle bounds, int radius)
+    private static void DrawFlashRing(Graphics g, Rectangle bounds, OverlayStateSettings state, int radius)
     {
+        byte alpha = OpacityAlpha(state.ClampedRingOpacity());
+        if (alpha == 0) return;
+
         float width = Math.Max(2f, bounds.Width / 21f);
         // The pen straddles the path, so half the stroke falls outside it. A
         // path flush to the bounds therefore loses its outer half off the edge
@@ -131,9 +137,36 @@ public static class OverlayRenderer
                                  bounds.Width - inset * 2 - 1, bounds.Height - inset * 2 - 1);
         if (ring.Width <= 0 || ring.Height <= 0) return;
 
-        using var pen = new Pen(FlashColor, width);
-        using var path = RoundedRect(ring, Math.Max(3, radius - inset));
+        using var pen = new Pen(Color.FromArgb(alpha, FlashColor), width);
+        // Follows the badge's own shape, so a round badge doesn't get a
+        // rectangular ring. With no background there is no shape to follow, so
+        // it keeps the rounded box it has always drawn.
+        OverlayShape shape = state.Shape == OverlayShape.None ? OverlayShape.RoundedSquare : state.Shape;
+        using var path = ShapePath(ring, shape, Math.Max(3, radius - inset));
         g.DrawPath(pen, path);
+    }
+
+    /// <summary>The outline of a badge background, or null for
+    /// <see cref="OverlayShape.None"/>.</summary>
+    public static GraphicsPath ShapePath(Rectangle bounds, OverlayShape shape, int radius)
+    {
+        var path = new GraphicsPath();
+        switch (shape)
+        {
+            case OverlayShape.Square:
+                path.AddRectangle(bounds);
+                break;
+            case OverlayShape.Circle:
+                // Inscribed in the square bounds, so a circle badge occupies the
+                // same footprint as any other and dragging feels the same.
+                path.AddEllipse(bounds);
+                break;
+            default:
+                path.Dispose();
+                return RoundedRect(bounds, radius);
+        }
+        path.CloseFigure();
+        return path;
     }
 
     // The badge itself, always opaque: opacity is applied to the finished layer.
@@ -144,12 +177,12 @@ public static class OverlayRenderer
     // different result, not just a brighter one, so that change belongs with
     // the setting that motivates it rather than in a step meant to be invisible.
     private static void DrawBadge(Graphics g, Rectangle bounds, OverlayStateSettings state,
-        Bitmap icon, string? remainingText, int radius, bool flashOn)
+        Bitmap icon, string? remainingText, int radius)
     {
-        if (state.ShowBackground)
+        if (state.Shape != OverlayShape.None)
         {
-            using var back = new SolidBrush(BackColor);
-            using var path = RoundedRect(bounds, radius);
+            using var back = new SolidBrush(HexColor.Parse(state.BackgroundColor, BackColor));
+            using var path = ShapePath(bounds, state.Shape, radius);
             g.FillPath(back, path);
         }
 
@@ -172,8 +205,6 @@ public static class OverlayRenderer
             var textRect = new RectangleF(bounds.Left, iconRect.Bottom, bounds.Width, bounds.Bottom - iconRect.Bottom);
             g.DrawString(remainingText, font, brush, textRect, CenterFormat);
         }
-
-        if (flashOn) DrawFlashRing(g, bounds, radius);
     }
 
     public static GraphicsPath RoundedRect(Rectangle bounds, int radius)

@@ -133,7 +133,31 @@ public sealed class Settings
         OverlayPosition = null;
         OverlayNormal = null;
         OverlayFullscreen = null;
+
+        // Per-state migration has to run here, after the fold above, not in the
+        // loop before it: on a 0.3 file the states exist only as OverlayNormal /
+        // OverlayFullscreen until that fold, so migrating earlier would skip
+        // precisely the users the legacy properties exist to protect.
+        foreach (OverlayItem item in Overlays)
+        {
+            MigrateState(item.Normal);
+            MigrateState(item.Fullscreen);
+        }
+
         return Overlays;
+    }
+
+    private static void MigrateState(OverlayStateSettings state)
+    {
+        // Keyed strictly on the legacy property still being present — never on
+        // the new one "looking like a default". EnsureOverlays is idempotent and
+        // called from several places, so deriving Shape from its current value
+        // would turn a deliberately chosen None back into a box on the next call.
+        if (state.ShowBackground.HasValue)
+        {
+            state.Shape = state.ShowBackground.Value ? OverlayShape.RoundedSquare : OverlayShape.None;
+            state.ShowBackground = null;
+        }
     }
 
     public void Save()
@@ -181,13 +205,51 @@ public sealed class OverlayStateSettings
     public const int MinSize = 32;
     public const int MaxSize = 256;
 
+    public const int MinOpacity = 10;
+
     public bool Visible { get; set; } = true;
     public bool UseCustomIcon { get; set; }
     public string? CustomIconFile { get; set; }
     public int Size { get; set; } = 64;
-    public bool ShowBackground { get; set; } = true;
 
+    /// <summary>Shape of the box behind the icon. <see cref="OverlayShape.None"/>
+    /// leaves the icon floating on its own transparency.</summary>
+    [JsonConverter(typeof(LenientEnumConverter<OverlayShape>))]
+    public OverlayShape Shape { get; set; } = OverlayShape.RoundedSquare;
+
+    /// <summary>Background colour as <c>#RRGGBB</c>. Transparency is
+    /// <see cref="Opacity"/>'s job, so the alpha here is ignored.</summary>
+    public string? BackgroundColor { get; set; }
+
+    /// <summary>How solid the whole badge is, as a percentage. 92 reproduces
+    /// the fixed translucency the overlay window used to apply.</summary>
+    public int Opacity { get; set; } = 92;
+
+    /// <summary>Use a different opacity while a keypress is being blocked, so
+    /// the badge visibly reacts rather than only flashing a ring.</summary>
+    public bool BlockedOpacityEnabled { get; set; }
+    public int BlockedOpacity { get; set; } = 100;
+
+    /// <summary>Opacity of the ring flashed on a blocked keypress. 0 hides it.</summary>
+    public int RingOpacity { get; set; } = 100;
+
+    // --- Legacy (0.3 and earlier) -------------------------------------------
+    // Superseded by Shape. Read once, folded in by Settings.EnsureOverlays, then
+    // nulled so it is never written again.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ShowBackground { get; set; }
+
+    // settings.json is text a user can edit, so nothing here can be trusted to
+    // be in range.
     public int ClampedSize() => Math.Clamp(Size, MinSize, MaxSize);
+    public int ClampedOpacity() => Math.Clamp(Opacity, MinOpacity, 100);
+    public int ClampedRingOpacity() => Math.Clamp(RingOpacity, 0, 100);
+
+    /// <summary>The opacity to draw at right now: the blocked one only while a
+    /// keypress is actually being blocked and the option is on.</summary>
+    public int EffectiveOpacity(bool blocked) => blocked && BlockedOpacityEnabled
+        ? Math.Clamp(BlockedOpacity, MinOpacity, 100)
+        : ClampedOpacity();
 
     /// <summary>
     /// A field-for-field copy. Deliberately <see cref="object.MemberwiseClone"/>
@@ -199,4 +261,73 @@ public sealed class OverlayStateSettings
     /// complete one.
     /// </summary>
     public OverlayStateSettings Clone() => (OverlayStateSettings)MemberwiseClone();
+}
+
+/// <summary>The box painted behind the badge icon.</summary>
+public enum OverlayShape
+{
+    // RoundedSquare is deliberately the zero value: it is what an overlay with
+    // no Shape recorded should be, so a value the converter can't read falls
+    // back to the sensible default rather than to something arbitrary.
+    RoundedSquare,
+    Square,
+    Circle,
+    None,
+}
+
+/// <summary>
+/// Reads an enum by name, falling back to the default rather than throwing.
+///
+/// The stock converter throws on a value it doesn't recognise, and
+/// <see cref="Settings.Load"/> catches everything and starts from defaults — so
+/// one mistyped word in a hand-edited file, or a settings.json written by a
+/// newer CatFoil and opened by an older one, would silently discard the hotkey,
+/// the autostart choice and the lifetime statistics. The statistics cannot be
+/// recovered. An unreadable appearance value costs nothing by comparison.
+/// </summary>
+internal sealed class LenientEnumConverter<T> : JsonConverter<T> where T : struct, Enum
+{
+    public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+            return Enum.TryParse(reader.GetString(), ignoreCase: true, out T byName) ? byName : default;
+
+        if (reader.TokenType == JsonTokenType.Number && reader.TryGetInt32(out int number))
+            return Enum.IsDefined(typeof(T), number) ? (T)Enum.ToObject(typeof(T), number) : default;
+
+        // Something structural where a name was expected; step over it so the
+        // reader stays in sync with the rest of the document.
+        reader.Skip();
+        return default;
+    }
+
+    public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
+}
+
+/// <summary>Colours travel through settings.json as <c>#RRGGBB</c> text —
+/// <see cref="Color"/> itself has no settable properties and cannot round-trip
+/// through System.Text.Json.</summary>
+internal static class HexColor
+{
+    public static Color Parse(string? hex, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return fallback;
+        try
+        {
+            // FromHtml also accepts colour names, and returns transparent black
+            // for one it doesn't know instead of throwing — which would be an
+            // invisible badge with no error. Treat that as unreadable.
+            Color parsed = ColorTranslator.FromHtml(hex.Trim());
+            return parsed.A == 0 ? fallback : Color.FromArgb(255, parsed);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException)
+        {
+            return fallback;
+        }
+    }
+
+    // Not ColorTranslator.ToHtml: that emits names ("Red") for known colours,
+    // which a strict #-only reader would then reject.
+    public static string ToHex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
 }

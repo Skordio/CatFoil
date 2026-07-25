@@ -165,8 +165,17 @@ public sealed class OverlaySettingsForm : Form
             _chkBackground.Text = "Show background box";
             _chkBackground.AutoSize = true;
             _chkBackground.Location = new Point(20, 136);
-            _chkBackground.Checked = _working.ShowBackground;
-            _chkBackground.CheckedChanged += (_, _) => { _working.ShowBackground = _chkBackground.Checked; Refresh2(); };
+            // Shape has replaced the old show/hide bool; this dialog is being
+            // replaced by an editor page with a proper shape picker, so until
+            // then the checkbox toggles between the default box and none — and
+            // leaves any other shape alone while it is checked.
+            _chkBackground.Checked = _working.Shape != OverlayShape.None;
+            _chkBackground.CheckedChanged += (_, _) =>
+            {
+                if (!_chkBackground.Checked) _working.Shape = OverlayShape.None;
+                else if (_working.Shape == OverlayShape.None) _working.Shape = OverlayShape.RoundedSquare;
+                Refresh2();
+            };
 
             var lblSizeCaption = new Label { Text = "Size:", AutoSize = true, Location = new Point(16, 172) };
             _size.Minimum = OverlayStateSettings.MinSize;

@@ -183,6 +183,16 @@ the settings preview is an ordinary control with no layered window, so a constan
 alpha applied by the compositor could never be previewed. `OpacityAlpha(92)` is
 exactly 235, the value the window used to apply, so the default is unchanged.
 
+**The blocked-key ring is painted outside that fade**, at its own `RingOpacity`.
+`Draw` takes both `flashOn` (the 120 ms blink phase) and `blocked` (true for the
+whole ~480 ms window, which is what the separate blocked opacity follows) — so
+the badge holds its reaction steady while the ring pulses, and dimming the badge
+to react to a keypress never dims the thing announcing it. `OverlayForm` derives
+both once in `RenderIfChanged` and passes them down, and tracks `_paintedBlocked`
+separately from `_paintedFlash`: the window opens with the ring in its *off*
+phase, so without it the first paint would see nothing changed and the blocked
+opacity wouldn't appear until the first blink.
+
 ---
 
 ## 3. System tray icon & menu
@@ -234,9 +244,26 @@ a truncated one.
 A **list of `OverlayItem`**, so several badges can be on screen at once. Each item
 has a stable `Id` (a GUID, which also names its image files on disk and must never
 be reused after a delete), a `Name`, an `Enabled` switch, an optional `Position`,
-and the two per-state `OverlayStateSettings` (`Normal` / `Fullscreen`:
-Visible, UseCustomIcon, CustomIconFile, Size 32–256, ShowBackground).
+and the two per-state `OverlayStateSettings` (`Normal` / `Fullscreen`):
+Visible · UseCustomIcon · CustomIconFile · Size 32–256 · `Shape`
+(RoundedSquare / Square / Circle / None) · `BackgroundColor` (`#RRGGBB`) ·
+`Opacity` · `BlockedOpacityEnabled` + `BlockedOpacity` · `RingOpacity`.
 `ShowOverlay` remains a single master switch over all of them.
+
+Everything is range-checked on read (`ClampedSize`, `ClampedOpacity`,
+`ClampedRingOpacity`) because settings.json is text a user can edit. Colours are
+stored as hex because `Color` has no settable properties and cannot round-trip
+through System.Text.Json; `HexColor.Parse` falls back to the built-in colour on
+anything unreadable, including the colour *name* case, where `FromHtml` returns
+transparent black instead of throwing and would otherwise yield an invisible
+badge with no error.
+
+Enums use `LenientEnumConverter`, which falls back to the default instead of
+throwing. This matters more than it looks: the stock converter throws on an
+unrecognised value, and `Settings.Load` catches everything and starts from
+defaults — so one mistyped word, or a settings.json written by a newer CatFoil,
+would silently discard the hotkey, the autostart choice and the lifetime
+statistics, which cannot be recovered.
 
 **Legacy migration.** 0.3 and earlier stored exactly one overlay, as the loose
 `OverlayPosition` / `OverlayNormal` / `OverlayFullscreen` properties. Those are
@@ -247,6 +274,15 @@ resetting to a default badge. The same code path produces the default overlay on
 fresh install, where all three are simply absent. `EnsureOverlays()` is idempotent
 and guarantees a non-empty list, so any caller needing "the overlays" can just call
 it. (One-way: a settings.json written by 0.4 has no overlay for 0.3 to read.)
+
+The per-state `ShowBackground` bool was likewise superseded, by `Shape`. Two
+things about that migration are load-bearing. It runs in its own loop **after**
+the legacy fold, not in the per-item loop before it — on a 0.3 file the states
+exist only as `OverlayNormal`/`OverlayFullscreen` until that fold, so migrating
+earlier would skip exactly the users the legacy properties protect. And it is
+keyed strictly on `ShowBackground.HasValue`, never on `Shape` "looking like a
+default": `EnsureOverlays` is called from several places, so deriving from the
+current value would turn a deliberately chosen `None` back into a box.
 
 ### 5.2 Custom overlay images — `src/IconStore.cs`
 
