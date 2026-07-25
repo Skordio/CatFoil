@@ -200,7 +200,7 @@ internal sealed class OverlayEditorPage : SettingsPage
             SetIconSource(OverlayIconSource.Custom);
         };
         browse.Click += (_, _) => ChooseImage(file);
-        tint.Click += (_, _) => ChooseIconColour(tint, strip);
+        tint.Click += (_, _) => ChooseIconColour(tint);
 
         if (!IconGallery.IsAvailable)
         {
@@ -223,7 +223,6 @@ internal sealed class OverlayEditorPage : SettingsPage
         _body.Controls.Add(blocked);
         y += 28;
 
-        int blockedSliderTop = y;
         y = Slider(y, "When blocking", OverlayStateSettings.MinOpacity, 100,
                    Math.Clamp(s.BlockedOpacity, OverlayStateSettings.MinOpacity, 100), " %",
                    v => Edit(x => x.BlockedOpacity = v), indent: 18, out Control[] blockedRow);
@@ -233,7 +232,6 @@ internal sealed class OverlayEditorPage : SettingsPage
             foreach (Control c in blockedRow) c.Enabled = blocked.Checked;
             Edit(x => x.BlockedOpacityEnabled = blocked.Checked);
         };
-        _ = blockedSliderTop;
 
         y = Slider(y, "Blocked ring", 0, 100, s.ClampedRingOpacity(), " %",
                    v => Edit(x => x.RingOpacity = v));
@@ -379,7 +377,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         RefreshPreview();
     }
 
-    private void ChooseIconColour(Button swatch, Control strip)
+    private void ChooseIconColour(Button swatch)
     {
         using var dlg = new ColorDialog
         {
@@ -391,10 +389,9 @@ internal sealed class OverlayEditorPage : SettingsPage
         swatch.BackColor = dlg.Color;
         Edit(x => x.IconColor = HexColor.ToHex(dlg.Color));
         LoadPreviewIcon();
-        RefreshPreview();
-        // Redraw the picker so its swatches follow the new colour.
+        // Rebuilds rather than just repainting: every swatch in the picker is
+        // rendered in the chosen colour, so they all have to be re-drawn.
         BuildBody();
-        _ = strip;
     }
 
     private void BuildPreview()
