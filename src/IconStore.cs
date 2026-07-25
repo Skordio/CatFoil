@@ -39,10 +39,17 @@ internal static class IconStore
         if (!AllowedExtensions.Contains(ext)) ext = ".png";
 
         Directory.CreateDirectory(Folder);
-        string relative = Path.Combine(FolderName, $"{overlayId}-{stateName}{ext}");
+        string relative = Path.Combine(FolderName, $"{overlayId}-{stateName}-{Token()}{ext}");
         File.Copy(sourcePath, FullPath(relative), overwrite: true);
         return relative;
     }
+
+    // Every import lands under a name of its own. Reusing one fixed name per
+    // state would mean picking a different picture leaves the stored path
+    // unchanged, so nothing downstream can tell the image needs re-reading —
+    // the badge would keep showing the old one. The superseded file stops being
+    // referenced and is swept when the settings window closes.
+    private static string Token() => Guid.NewGuid().ToString("N")[..6];
 
     /// <summary>
     /// Copies an existing stored image to a new overlay's name, so a duplicated
@@ -64,7 +71,7 @@ internal static class IconStore
             if (!AllowedExtensions.Contains(ext)) ext = ".png";
 
             Directory.CreateDirectory(Folder);
-            string relative = Path.Combine(FolderName, $"{overlayId}-{stateName}{ext}");
+            string relative = Path.Combine(FolderName, $"{overlayId}-{stateName}-{Token()}{ext}");
             File.Copy(source, FullPath(relative), overwrite: true);
             return relative;
         }

@@ -29,6 +29,14 @@ internal sealed class OverlaysPage : SettingsPage
         Rebuild();   // no event to unwind here, so build the list straight away
     }
 
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        // Coming back from the editor sub-page: the name, thumbnail and summary
+        // of whichever overlay was edited are all potentially stale.
+        if (Visible && _defaultIcon is not null) RebuildLater();
+    }
+
     private Bitmap LoadDefaultIcon()
     {
         Icon source = FindForm()?.Icon ?? SystemIcons.Application;
@@ -98,13 +106,9 @@ internal sealed class OverlaysPage : SettingsPage
 
     private void OnEdit(OverlayItem item)
     {
-        Form? owner = FindForm();
-        using var editor = new OverlaySettingsForm(item, Settings, owner?.Icon ?? SystemIcons.Application);
-        // That dialog saves itself; re-announce so the live badge picks the
-        // change up, then refresh the card's thumbnail and summary.
-        editor.SettingsSaved += Session.NotifyChanged;
-        if (owner is not null) editor.ShowDialog(owner); else editor.ShowDialog();
-        RebuildLater();
+        // The editor is a sub-page of the shell, not a dialog: it applies
+        // immediately like every other setting, and the shell owns disposing it.
+        (FindForm() as SettingsForm)?.ShowSubPage(new OverlayEditorPage(Session, item));
     }
 
     private void OnAdd()

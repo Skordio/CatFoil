@@ -74,8 +74,10 @@ public sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Font = DialogFont;
         BackColor = Color.White;
-        ClientSize = new Size(796, 540);
-        MinimumSize = new Size(700, 480);
+        // Wide enough for the overlay editor, which puts a real-size preview
+        // beside its controls; the minimum still fits that page without clipping.
+        ClientSize = new Size(900, 600);
+        MinimumSize = new Size(840, 520);
 
         _nav.Dock = DockStyle.Fill;
         _nav.BorderStyle = BorderStyle.None;

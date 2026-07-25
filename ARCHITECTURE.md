@@ -118,22 +118,29 @@ lands in the box instead of toggling the lock (`ApplyHotkeySettings` guards on
 live in `src/HotkeyText.cs`, shared with the main window, welcome tour and tray
 balloons.
 
-### 2.3 Overlay customization menu — `src/OverlaySettingsForm.cs`
-A dialog (652×746) opened from an overlay card's **Edit** button. (Being replaced
-by an editor sub-page; it is the last fixed-pixel dialog left.) Two mirrored
-**state editors** (`StateEditor`):
-- **Normal (no fullscreen app)**
-- **When a fullscreen app is running**
+### 2.3 Overlay editor — `src/Pages/OverlayEditorPage.cs`
+A **sub-page** (§2.2) of the settings shell, opened from an overlay card's
+**Edit** button. Immediate-apply like every other page — there is no OK/Cancel.
 
-Each editor has: show-in-this-state toggle · Default cat / Custom image radios +
-**Browse…** · size slider (32–256 px) · show-background-box toggle · and a
-**checkerboard live preview** (`PreviewBox`) that paints via the shared
-`OverlayRenderer` at true 1:1 size. The dialog edits **one `OverlayItem`** (§5.1) —
-currently the first, since the Overlays page has no list yet. On **OK**, any newly
-chosen custom image is copied into the icon store (§5.2), the item's two
-`OverlayStateSettings` are written, orphaned images are swept, and `SettingsSaved`
-is raised. A failed image copy reports and leaves the dialog open rather than
-closing on a half-applied change.
+At the top: the overlay's **Name**, and an **Editing** selector choosing which
+state the editor below is bound to (Normal · When a fullscreen app is running).
+Only one state is on screen at a time, so both keep the full set of controls
+without the page growing to twice the length. Switching states rebuilds the body
+outright rather than rebinding a live control tree — every value comes from the
+model anyway, and rebinding is more code and more ways to fire a change handler
+while doing it.
+
+The body: show-in-this-state · Default cat / Custom image + **Choose…** · sliders
+for size (32–256 px), opacity, an optional different opacity while blocking, and
+the blocked ring · background shape and colour (`ColorDialog`, in the box) · and
+a **checkerboard live preview** (`PreviewBox`) painting through the shared
+`OverlayRenderer` at true 1:1 size. A **Preview a blocked key** toggle animates
+the blocked state — without it, the two settings that only apply while blocking
+would have nothing to preview. The body sizes itself to what was laid out rather
+than to a constant, so adding a row can't quietly clip the last one.
+
+Each edit replaces the state object instead of mutating it, because the overlay
+window's repaint check compares state by reference (§2.5).
 
 ### 2.4 Welcome window — `src/WelcomeForm.cs`
 Shown once on first launch (flag `Settings.WelcomeShown`), and re-openable from
@@ -289,6 +296,14 @@ current value would turn a deliberately chosen `None` back into a box.
 A chosen image is **copied** into `%APPDATA%\CatFoil\icons\{overlayId}-{normal|fullscreen}.{ext}`
 so the badge survives the original being moved or deleted; settings store only the
 path **relative to** `Settings.Directory`, which keeps the portable EXE portable.
+Every import lands under a **fresh** name (`{id}-{state}-{token}.{ext}`). Reusing
+one fixed name per state would mean choosing a different picture leaves the
+stored path unchanged, so nothing downstream could tell the image needs
+re-reading — and `OverlayForm.ApplyAppearance` deliberately reloads only when
+that path changes, since it runs on every settings edit and would otherwise read
+a file and decode a bitmap per tick of a slider. The superseded file stops being
+referenced and is swept at window close.
+
 `Duplicate()` copies an existing image to a new overlay's name, so a duplicated
 overlay owns its picture rather than sharing the original's file.
 `CollectGarbage()` — run when the settings window closes — deletes stored images

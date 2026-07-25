@@ -155,14 +155,28 @@ public sealed class OverlayForm : Form
     /// <summary>Applies the two per-state appearances and refreshes if active.</summary>
     public void ApplyAppearance(OverlayStateSettings normal, OverlayStateSettings fullscreen)
     {
+        // Reload the image only when the setting that names it changed. This
+        // runs on *every* settings edit, and reading a file plus decoding a
+        // bitmap per tick of a size or opacity slider would be a real cost for
+        // a picture that hasn't moved. Imports always land under a fresh name,
+        // so a changed picture always looks like a changed path.
+        bool reloadNormal = _normalIcon is null || IconDiffers(_normal, normal);
+        bool reloadFullscreen = _fullscreenIcon is null || IconDiffers(_fullscreen, fullscreen);
+
         _normal = normal.Clone();
         _fullscreen = fullscreen.Clone();
 
-        ReplaceIcon(ref _normalIcon, LoadIcon(_normal));
-        ReplaceIcon(ref _fullscreenIcon, LoadIcon(_fullscreen));
+        if (reloadNormal) ReplaceIcon(ref _normalIcon, LoadIcon(_normal));
+        if (reloadFullscreen) ReplaceIcon(ref _fullscreenIcon, LoadIcon(_fullscreen));
 
+        // _currentState is matched by reference, and both states were just
+        // replaced, so the next render can't skip the new appearance.
         if (_active) UpdateVisibility();
     }
+
+    private static bool IconDiffers(OverlayStateSettings a, OverlayStateSettings b) =>
+        a.UseCustomIcon != b.UseCustomIcon
+        || !string.Equals(a.CustomIconFile, b.CustomIconFile, StringComparison.OrdinalIgnoreCase);
 
     // Swap a state's bitmap, disposing the old one unless it's the shared default.
     private void ReplaceIcon(ref Bitmap? slot, Bitmap next)
