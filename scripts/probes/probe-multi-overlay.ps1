@@ -58,7 +58,17 @@ try {
 
   Check 'ids kept distinct' ($a.OverlayId -eq 'overlay-a' -and $b.OverlayId -eq 'overlay-b') "$($a.OverlayId)/$($b.OverlayId)"
   Check 'cascade separates them' ($b.Location.Y -gt $a.Location.Y) "a=$($a.Location) b=$($b.Location)"
-  Check 'cascade steps by 88px' (($b.Location.Y - $a.Location.Y) -eq 88) "delta=$($b.Location.Y - $a.Location.Y)"
+
+  # Two badges of the SAME size step by the documented 88 px. Between different
+  # sizes the step scales with the badge, so a constant would be the wrong test
+  # -- what matters there is the no-overlap check below.
+  $s1 = [Activator]::CreateInstance($oT, @($icon, 'step-1'))
+  $s2 = [Activator]::CreateInstance($oT, @($icon, 'step-2'))
+  try {
+    $s1.ApplyAppearance((NewState 64 $true), $hidden); $s1.ApplySavedPosition($null, 0)
+    $s2.ApplyAppearance((NewState 64 $true), $hidden); $s2.ApplySavedPosition($null, 1)
+    Check 'same-size badges step by 88px' (($s2.Location.Y - $s1.Location.Y) -eq 88) "delta=$($s2.Location.Y - $s1.Location.Y)"
+  } finally { $s1.Dispose(); $s2.Dispose() }
 
   $a.SetActive($true); $b.SetActive($true)
   Pump 500

@@ -169,6 +169,16 @@ public sealed class OverlayForm : Form
         if (reloadNormal) ReplaceIcon(ref _normalIcon, LoadIcon(_normal));
         if (reloadFullscreen) ReplaceIcon(ref _fullscreenIcon, LoadIcon(_fullscreen));
 
+        // Take the normal state's size even while hidden. UpdateVisibility only
+        // resizes an active badge, so without this a badge that has never been
+        // shown still measures 64 px — and automatic placement, which centres on
+        // the badge, would centre on the wrong size.
+        if (!_active)
+        {
+            int size = _normal.ClampedSize();
+            if (ClientSize.Width != size) ClientSize = new Size(size, size);
+        }
+
         // _currentState is matched by reference, and both states were just
         // replaced, so the next render can't skip the new appearance.
         if (_active) UpdateVisibility();
@@ -195,15 +205,19 @@ public sealed class OverlayForm : Form
     /// quarters of the way up it: clear of the middle, but not tucked so far
     /// into a corner that it goes unnoticed. Badges after the first step down
     /// from there by <paramref name="cascadeIndex"/> so a newly added overlay
-    /// doesn't spawn exactly on top of an existing one.
+    /// doesn't spawn on top of an existing one.
     /// </summary>
     public void ApplySavedPosition(Point? saved, int cascadeIndex = 0)
     {
-        const int CascadeStep = 88;   // clears a default 64px badge plus a gap
+        const int CascadeGap = 24;
+        // Stepped by this badge's own height, not a constant: a fixed step only
+        // clears a badge no taller than itself, and the size range goes to 256.
+        // At the default 64 px this is the 88 px it has always been.
+        int step = Height + CascadeGap;
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         Point p = saved ?? new Point(
             workArea.Left + workArea.Width * 3 / 4 - Width / 2,
-            workArea.Top + workArea.Height / 4 - Height / 2 + cascadeIndex * CascadeStep);
+            workArea.Top + workArea.Height / 4 - Height / 2 + cascadeIndex * step);
         Location = ClampToScreen(p);
     }
 

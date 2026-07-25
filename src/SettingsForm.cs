@@ -200,6 +200,16 @@ public sealed class SettingsForm : Form
         SetBackVisible(true);
     }
 
+    /// <summary>
+    /// Rebuilds the breadcrumb. A sub-page's title can change while it is open —
+    /// renaming an overlay does exactly that — and the header is built from it.
+    /// </summary>
+    internal void RefreshSubPageTitle()
+    {
+        if (_subPage is null || _subPageParent is null) return;
+        _header.Text = _subPageParent.Title + " ›  " + _subPage.Title;
+    }
+
     /// <summary>Returns from a sub-page to the page it was opened from.</summary>
     internal void PopSubPage()
     {
@@ -329,6 +339,10 @@ public sealed class SettingsForm : Form
         // Sweep overlay images nothing refers to any more. Deferred to here
         // rather than done when an overlay is removed, so removing one and
         // changing your mind inside the same visit doesn't cost you the image.
+        // Release the MCI devices first: they hold their audio files open, so a
+        // cue auditioned with Test would otherwise pin the file it replaced and
+        // the sweep would silently skip it for the life of the process.
+        AudioPlayer.CloseAll();
         IconStore.CollectGarbage(_session.Settings);
         SoundStore.CollectGarbage(_session.Settings);
 

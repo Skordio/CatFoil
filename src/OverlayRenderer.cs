@@ -66,6 +66,12 @@ public static class OverlayRenderer
         GraphicsState entry = g.Save();
         try
         {
+            // The badge itself is composed on its own layer, but the ring is
+            // painted straight onto the caller's surface — which arrives with
+            // smoothing at its default of None, so it needs this to keep its
+            // curves.
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
             int radius = CornerRadius(bounds.Width);
 
             // Render the badge opaque into its own layer, then fade the whole

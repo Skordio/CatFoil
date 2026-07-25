@@ -43,6 +43,10 @@ public sealed class TrayAppContext : ApplicationContext
     private int _lastBlockedSoundTick;
     // True while the settings window is listening for a new hotkey binding.
     private bool _hotkeyCapture;
+    // What the hotkey and startup registrations were last built from, so a live
+    // edit that touches neither doesn't redo them. See ApplyLiveEdit.
+    private (Keys, bool, bool, Keys, string) _appliedHotkeyState;
+    private (bool, bool) _appliedStartupState;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
@@ -75,6 +79,9 @@ public sealed class TrayAppContext : ApplicationContext
         _hotkey.HotkeyPressed += ToggleLock;
         ApplyHotkeySettings();
         ApplyStartupSettings();
+        // Seed the baselines ApplyLiveEdit compares against.
+        _appliedHotkeyState = HotkeyState();
+        _appliedStartupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);
 
         _timedTimer.Tick += (_, _) => TimedTick();
 
@@ -298,18 +305,24 @@ public sealed class TrayAppContext : ApplicationContext
         for (int i = 0; i < items.Count; i++)
         {
             OverlayItem item = items[i];
-            OverlayForm form = _overlayForms.FirstOrDefault(f => f.OverlayId == item.Id)
-                               ?? CreateOverlay(item, cascadeIndex: i);
+            OverlayForm? form = _overlayForms.FirstOrDefault(f => f.OverlayId == item.Id);
+            bool created = form is null;
+            form ??= CreateOverlay(item);
+
             form.ApplyAppearance(item.Normal, item.Fullscreen);
+            // Positioned only after the appearance is on, and only for a badge
+            // that is new: automatic placement centres on the badge's size, and
+            // before ApplyAppearance that is still the constructor's default 64
+            // rather than this item's.
+            if (created) form.ApplySavedPosition(item.Position, cascadeIndex: i);
         }
 
         ApplyOverlayActivation();
     }
 
-    private OverlayForm CreateOverlay(OverlayItem item, int cascadeIndex)
+    private OverlayForm CreateOverlay(OverlayItem item)
     {
         var form = new OverlayForm(_appIcon, item.Id);
-        form.ApplySavedPosition(item.Position, cascadeIndex);
         form.OpenRequested += ShowMainWindow;
         // Look the item up again on each drag rather than capturing it: the
         // settings object outlives any particular OverlayItem instance.
@@ -417,19 +430,52 @@ public sealed class TrayAppContext : ApplicationContext
         }
 
         _settingsForm = new SettingsForm(_settings) { Icon = _appIcon };
-        _settingsForm.SettingsSaved += () =>
-        {
-            ApplyHotkeySettings();
-            ApplyStartupSettings();
-            _mainForm.RefreshHotkey();
-            SyncOverlays();
-            ApplyIdleTimer();
-        };
+        _settingsForm.SettingsSaved += ApplyLiveEdit;
         // The elevated relaunch is already running; quit so it can take over.
         _settingsForm.RestartElevatedRequested += ExitApp;
         _settingsForm.HotkeyCaptureChanged += OnHotkeyCaptureChanged;
         _settingsForm.Show();
     }
+
+    /// <summary>
+    /// Applies a settings edit to the running app.
+    ///
+    /// Immediate-apply raises this on <em>every</em> edit, which since the
+    /// overlay and sound editors arrived means every tick of a slider drag and
+    /// every keystroke in a name box. Re-registering the hotkey and rewriting
+    /// the HKCU Run key at that rate is pure waste — and when the hotkey is
+    /// already owned by another app, it would put a "could not register" balloon
+    /// on screen per tick. So those two only run when something they actually
+    /// depend on has changed; the rest is cheap enough to run every time.
+    /// </summary>
+    private void ApplyLiveEdit()
+    {
+        var hotkeyState = HotkeyState();
+        if (hotkeyState != _appliedHotkeyState)
+        {
+            _appliedHotkeyState = hotkeyState;
+            ApplyHotkeySettings();
+            _mainForm.RefreshHotkey();
+        }
+
+        var startupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);
+        if (startupState != _appliedStartupState)
+        {
+            _appliedStartupState = startupState;
+            ApplyStartupSettings();
+        }
+
+        SyncOverlays();
+        ApplyIdleTimer();
+    }
+
+    // Everything ApplyHotkeySettings reads, as a comparable value.
+    private (Keys, bool, bool, Keys, string) HotkeyState() => (
+        _settings.Hotkey,
+        _settings.HotkeyEnabled,
+        _settings.UseChordHotkey,
+        _settings.ChordModifiers,
+        string.Join(",", _settings.ChordKeys ?? Array.Empty<Keys>()));
 
     /// <summary>
     /// Stop and resume listening for the hotkey while the settings window binds

@@ -20,6 +20,7 @@ $probes = @(
   'probe-scroll'          # pages scroll when squeezed
   'probe-3a'              # overlay list + sub-page navigation
   'probe-3d'              # overlay editor sub-page
+  'probe-review-fixes'    # regression cover for the code-review findings
 )
 
 $failed = @()

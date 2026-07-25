@@ -102,8 +102,21 @@ $p1 = Bytes $r1; $p2 = Bytes $r2
 
 $body1 = Px $r1 $p1 32 32     # icon centre
 $body2 = Px $r2 $p2 32 32
-$ring1 = Px $r1 $p1 3 32      # on the ring stroke at the left edge
-$ring2 = Px $r2 $p2 3 32
+
+# Sample the most-covered pixel across the ring stroke rather than a fixed
+# column. The ring is antialiased, and at a partially-covered edge pixel the
+# result legitimately blends with the badge behind it — which the blocked
+# opacity is fading. Only a fully-covered pixel isolates the ring itself.
+function RingPeak($bmp, $bytes) {
+  $best = $null
+  foreach ($x in 0..6) {
+    $px = Px $bmp $bytes $x 32
+    if ($null -eq $best -or $px.A -gt $best.A) { $best = $px }
+  }
+  $best
+}
+$ring1 = RingPeak $r1 $p1
+$ring2 = RingPeak $r2 $p2
 Check 'blocked opacity dims the badge body' ($body2.A -lt ($body1.A / 2)) "$($body1.A) -> $($body2.A)"
 Check 'ring is unaffected by blocked opacity' ([Math]::Abs([int]$ring1.A - [int]$ring2.A) -le 1) "$($ring1.A) vs $($ring2.A)"
 Check 'ring stays strong while the body fades' ($ring2.A -gt ($body2.A * 2)) "ring=$($ring2.A) body=$($body2.A)"

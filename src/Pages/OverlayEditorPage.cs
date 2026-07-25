@@ -57,7 +57,12 @@ internal sealed class OverlayEditorPage : SettingsPage
     {
         AddSection("Name");
         var name = new TextBox { Text = _item.Name, Width = 280, Font = BodyFont };
-        name.TextChanged += (_, _) => Session.Apply(_ => _item.Name = name.Text);
+        name.TextChanged += (_, _) =>
+        {
+            Session.Apply(_ => _item.Name = name.Text);
+            // The breadcrumb is built from Title, which is this name.
+            (FindForm() as SettingsForm)?.RefreshSubPageTitle();
+        };
         AddRow(name);
 
         AddSection("Editing");
@@ -94,8 +99,16 @@ internal sealed class OverlayEditorPage : SettingsPage
     private void BuildBody()
     {
         _body.SuspendLayout();
-        foreach (Control c in _body.Controls) c.Dispose();
-        _body.Controls.Clear();
+        // Backwards, because Dispose() removes the control from this very
+        // collection and the enumerator is index-based: a foreach would skip
+        // every other child, and the Clear() that followed would then unparent
+        // the survivors without disposing them. This runs on every state switch.
+        for (int i = _body.Controls.Count - 1; i >= 0; i--)
+        {
+            Control gone = _body.Controls[i];
+            _body.Controls.RemoveAt(i);
+            gone.Dispose();
+        }
 
         OverlayStateSettings s = State;
         int y = 0;
@@ -491,7 +504,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         try
         {
             string stored = IconStore.Import(dlg.FileName, _item.Id, _editingFullscreen ? "fullscreen" : "normal");
-            Edit(x => { x.UseCustomIcon = true; x.CustomIconFile = stored; });
+            Edit(x => { x.IconSource = OverlayIconSource.Custom; x.CustomIconFile = stored; });
             file.Text = Path.GetFileName(dlg.FileName);
             LoadPreviewIcon();
             RefreshPreview();

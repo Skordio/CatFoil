@@ -23,7 +23,28 @@ internal sealed class LockingPage : SettingsPage
     private readonly List<Keys> _chordCapture = new();
     private readonly HashSet<Keys> _chordHeld = new();
 
+    private Form? _hookedForm;
+
     public override string Title => "Locking";
+
+    // Releasing on deactivate and re-arming on activate keeps the "stop
+    // listening for the hotkey" hold tied to the box actually being usable,
+    // rather than to focus events that don't fire across an app switch.
+    private void HookFormActivation()
+    {
+        if (_hookedForm is not null) return;
+        _hookedForm = FindForm();
+        if (_hookedForm is null) return;
+        _hookedForm.Deactivate += OnOwnerDeactivate;
+        _hookedForm.Activated += OnOwnerActivated;
+    }
+
+    private void OnOwnerDeactivate(object? sender, EventArgs e) => Session.SetHotkeyCapture(false);
+
+    private void OnOwnerActivated(object? sender, EventArgs e)
+    {
+        if (_txtHotkey.Focused) Session.SetHotkeyCapture(true);
+    }
 
     public LockingPage(SettingsSession session) : base(session)
     {
@@ -51,6 +72,11 @@ internal sealed class LockingPage : SettingsPage
         // hotkey, so the combo being rebound lands here instead of toggling.
         _txtHotkey.Enter += (_, _) => Session.SetHotkeyCapture(true);
         _txtHotkey.Leave += (_, _) => Session.SetHotkeyCapture(false);
+        // Leave does not fire when the whole window loses activation, so
+        // Alt+Tabbing away with the cursor still in this box would strand the
+        // hold — the hotkey and the chord would both stay unregistered, and the
+        // watchdog can't repair it because it goes through the same guard.
+        HandleCreated += (_, _) => HookFormActivation();
 
         var hint = new Label
         {
@@ -199,4 +225,17 @@ internal sealed class LockingPage : SettingsPage
         _txtHotkey.Text = _chkChord.Checked
             ? string.Join(" + ", HotkeyText.ChordParts(_chordModifiers, _chordKeys))
             : HotkeyText.Format(_hotkey);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _hookedForm is not null)
+        {
+            // The form outlives this page during teardown, so leaving these
+            // attached would keep a disposed page reachable.
+            _hookedForm.Deactivate -= OnOwnerDeactivate;
+            _hookedForm.Activated -= OnOwnerActivated;
+            _hookedForm = null;
+        }
+        base.Dispose(disposing);
+    }
 }
