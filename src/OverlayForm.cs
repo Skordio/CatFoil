@@ -27,7 +27,11 @@ public sealed class OverlayForm : Form
     private const byte AC_SRC_OVER = 0x00;
     private const byte AC_SRC_ALPHA = 0x01;
     private const int ULW_ALPHA = 0x02;
-    private const byte OverlayAlpha = 235;   // ~0.92 overall opacity, as before
+    // Fully opaque compositing: the badge's own translucency is baked into the
+    // bitmap by OverlayRenderer, which is the only way the settings preview can
+    // show it too — a preview is an ordinary control, with no layered window to
+    // apply a constant alpha. Applying it here as well would fade it twice.
+    private const byte OverlayAlpha = 255;
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);

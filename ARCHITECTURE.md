@@ -173,6 +173,16 @@ Features:
   windows).
 Painting is shared with the settings preview through `src/OverlayRenderer.cs`.
 
+**Opacity lives in the renderer, not the window.** `Draw` paints the badge opaque
+into its own layer and then fades that layer once through an `ImageAttributes`
+`ColorMatrix`; `UpdateLayeredWindow` composites at `SourceConstantAlpha = 255`.
+Two reasons. Fading each element as it is painted would make the places they
+overlap more opaque than the edges — two layers at 20% read as 36%, three as 49%
+— so a translucent badge would come out as a solid icon in a ghostly frame. And
+the settings preview is an ordinary control with no layered window, so a constant
+alpha applied by the compositor could never be previewed. `OpacityAlpha(92)` is
+exactly 235, the value the window used to apply, so the default is unchanged.
+
 ---
 
 ## 3. System tray icon & menu

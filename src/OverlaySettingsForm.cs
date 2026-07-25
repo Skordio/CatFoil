@@ -68,10 +68,13 @@ public sealed class OverlaySettingsForm : Form
 
     private void OnOk(object? sender, EventArgs e)
     {
+        OverlayStateSettings normal, fullscreen;
         try
         {
-            _normalEditor.CommitTo(_item.Normal, _item.Id, "normal");
-            _fullscreenEditor.CommitTo(_item.Fullscreen, _item.Id, "fullscreen");
+            // Build both before assigning either, so a failure on the second
+            // doesn't leave the overlay half-updated.
+            normal = _normalEditor.Commit(_item.Id, "normal");
+            fullscreen = _fullscreenEditor.Commit(_item.Id, "fullscreen");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or NotSupportedException or ArgumentException)
@@ -83,6 +86,9 @@ public sealed class OverlaySettingsForm : Form
                 "Overlay Appearance", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+
+        _item.Normal = normal;
+        _item.Fullscreen = fullscreen;
 
         // Orphaned images are swept when the settings window closes, not here.
         _settings.Save();
@@ -258,19 +264,20 @@ public sealed class OverlaySettingsForm : Form
 
         private void Refresh2() => _preview.Show(_working, _previewIcon);
 
-        /// <summary>Writes this editor's state into <paramref name="target"/>,
-        /// copying any newly chosen custom image into the icon store. Throws if
-        /// that copy fails, leaving <paramref name="target"/> untouched.</summary>
-        public void CommitTo(OverlayStateSettings target, string overlayId, string stateName)
+        /// <summary>
+        /// Builds the edited state, copying any newly chosen custom image into
+        /// the icon store first. Throws if that copy fails, having changed
+        /// nothing. Returns a new object rather than writing field-by-field into
+        /// an existing one, so adding a setting can't be silently forgotten here.
+        /// </summary>
+        public OverlayStateSettings Commit(string overlayId, string stateName)
         {
             if (_working.UseCustomIcon && _pendingSourcePath is not null)
                 _working.CustomIconFile = IconStore.Import(_pendingSourcePath, overlayId, stateName);
 
-            target.Visible = _working.Visible;
-            target.UseCustomIcon = _working.UseCustomIcon;
-            target.CustomIconFile = _working.CustomIconFile;
-            target.Size = _working.ClampedSize();
-            target.ShowBackground = _working.ShowBackground;
+            OverlayStateSettings result = _working.Clone();
+            result.Size = _working.ClampedSize();
+            return result;
         }
 
         protected override void Dispose(bool disposing)

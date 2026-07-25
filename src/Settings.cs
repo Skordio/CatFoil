@@ -189,12 +189,14 @@ public sealed class OverlayStateSettings
 
     public int ClampedSize() => Math.Clamp(Size, MinSize, MaxSize);
 
-    public OverlayStateSettings Clone() => new()
-    {
-        Visible = Visible,
-        UseCustomIcon = UseCustomIcon,
-        CustomIconFile = CustomIconFile,
-        Size = Size,
-        ShowBackground = ShowBackground,
-    };
+    /// <summary>
+    /// A field-for-field copy. Deliberately <see cref="object.MemberwiseClone"/>
+    /// rather than an initializer listing every property: a hand-written list
+    /// silently drops any field added later, and the failure is invisible —
+    /// the settings page shows the new value while the badge keeps rendering
+    /// the old one, with no error. Every field here is a value type or an
+    /// immutable string, and the class is sealed, so a shallow copy is a
+    /// complete one.
+    /// </summary>
+    public OverlayStateSettings Clone() => (OverlayStateSettings)MemberwiseClone();
 }
