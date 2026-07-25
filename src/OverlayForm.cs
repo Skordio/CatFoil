@@ -175,8 +175,10 @@ public sealed class OverlayForm : Form
     }
 
     private static bool IconDiffers(OverlayStateSettings a, OverlayStateSettings b) =>
-        a.UseCustomIcon != b.UseCustomIcon
-        || !string.Equals(a.CustomIconFile, b.CustomIconFile, StringComparison.OrdinalIgnoreCase);
+        a.IconSource != b.IconSource
+        || !string.Equals(a.CustomIconFile, b.CustomIconFile, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(a.GalleryIconId, b.GalleryIconId, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(a.IconColor, b.IconColor, StringComparison.OrdinalIgnoreCase);
 
     // Swap a state's bitmap, disposing the old one unless it's the shared default.
     private void ReplaceIcon(ref Bitmap? slot, Bitmap next)

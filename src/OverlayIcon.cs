@@ -20,7 +20,16 @@ internal static class OverlayIcon
     /// </summary>
     public static Bitmap Load(OverlayStateSettings state, Bitmap fallback)
     {
-        if (!state.UseCustomIcon || string.IsNullOrWhiteSpace(state.CustomIconFile))
+        if (state.IconSource == OverlayIconSource.Gallery)
+        {
+            // Null when the symbol font is missing or the id is unknown, in
+            // which case the bundled cat stands in.
+            return IconGallery.Render(state.GalleryIconId ?? IconGallery.DefaultId,
+                                      HexColor.Parse(state.IconColor, Color.White))
+                   ?? fallback;
+        }
+
+        if (state.IconSource != OverlayIconSource.Custom || string.IsNullOrWhiteSpace(state.CustomIconFile))
             return fallback;
 
         try

@@ -120,9 +120,13 @@ internal sealed class OverlayCard : Panel
 
     private static string Describe(OverlayItem item)
     {
-        string icon = item.Normal.UseCustomIcon && !string.IsNullOrWhiteSpace(item.Normal.CustomIconFile)
-            ? "custom image"
-            : "default cat";
+        string icon = item.Normal.IconSource switch
+        {
+            OverlayIconSource.Custom when !string.IsNullOrWhiteSpace(item.Normal.CustomIconFile) => "custom image",
+            OverlayIconSource.Gallery => IconGallery.Find(item.Normal.GalleryIconId)?.Label.ToLowerInvariant()
+                                         ?? "built-in icon",
+            _ => "default cat",
+        };
         string fullscreen = item.Fullscreen.Visible ? "shown in fullscreen" : "hidden in fullscreen";
         return $"{item.Normal.ClampedSize()} px · {icon} · {fullscreen}";
     }

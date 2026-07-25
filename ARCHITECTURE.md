@@ -107,7 +107,7 @@ as `SettingsSaved`, so the tray applies it live), and schedules the disk write o
 a 500 ms debounce so dragging a spinner doesn't write settings.json per tick.
 `Flush()` forces the pending write — called on form close and before an elevated
 relaunch hands off. Closing the window also runs `IconStore.CollectGarbage`
-(§5.2): sweeping orphaned overlay images is deferred to here rather than done
+(§5.3): sweeping orphaned overlay images is deferred to here rather than done
 when an overlay is removed, so removing one and changing your mind inside the
 same visit doesn't cost you the image.
 
@@ -130,7 +130,8 @@ outright rather than rebinding a live control tree — every value comes from th
 model anyway, and rebinding is more code and more ways to fire a change handler
 while doing it.
 
-The body: show-in-this-state · Default cat / Custom image + **Choose…** · sliders
+The body: show-in-this-state · an icon source (Default cat / **Built-in icon**
+with a glyph picker and colour / Custom image + **Choose…**) · sliders
 for size (32–256 px), opacity, an optional different opacity while blocking, and
 the blocked ring · background shape and colour (`ColorDialog`, in the box) · and
 a **checkerboard live preview** (`PreviewBox`) painting through the shared
@@ -252,7 +253,8 @@ A **list of `OverlayItem`**, so several badges can be on screen at once. Each it
 has a stable `Id` (a GUID, which also names its image files on disk and must never
 be reused after a delete), a `Name`, an `Enabled` switch, an optional `Position`,
 and the two per-state `OverlayStateSettings` (`Normal` / `Fullscreen`):
-Visible · UseCustomIcon · CustomIconFile · Size 32–256 · `Shape`
+Visible · `IconSource` (Default / Gallery / Custom) + `GalleryIconId` +
+`IconColor` + `CustomIconFile` · Size 32–256 · `Shape`
 (RoundedSquare / Square / Circle / None) · `BackgroundColor` (`#RRGGBB`) ·
 `Opacity` · `BlockedOpacityEnabled` + `BlockedOpacity` · `RingOpacity`.
 `ShowOverlay` remains a single master switch over all of them.
@@ -282,8 +284,9 @@ fresh install, where all three are simply absent. `EnsureOverlays()` is idempote
 and guarantees a non-empty list, so any caller needing "the overlays" can just call
 it. (One-way: a settings.json written by 0.4 has no overlay for 0.3 to read.)
 
-The per-state `ShowBackground` bool was likewise superseded, by `Shape`. Two
-things about that migration are load-bearing. It runs in its own loop **after**
+Two per-state properties were likewise superseded: `ShowBackground` by `Shape`,
+and `UseCustomIcon` by `IconSource`. Two things about those migrations are
+load-bearing. They run in their own loop **after**
 the legacy fold, not in the per-item loop before it — on a 0.3 file the states
 exist only as `OverlayNormal`/`OverlayFullscreen` until that fold, so migrating
 earlier would skip exactly the users the legacy properties protect. And it is
@@ -291,7 +294,33 @@ keyed strictly on `ShowBackground.HasValue`, never on `Shape` "looking like a
 default": `EnsureOverlays` is called from several places, so deriving from the
 current value would turn a deliberately chosen `None` back into a box.
 
-### 5.2 Custom overlay images — `src/IconStore.cs`
+### 5.2 Built-in icons — `src/IconGallery.cs`
+
+The gallery is drawn from a Windows symbol font rather than shipped as artwork —
+the repo has exactly one image and it is a placeholder. Glyphs are single-colour
+outlines, so the user's `IconColor` tints them for free.
+
+Four things about it are load-bearing:
+
+- **`GraphicsPath.AddString` + `FillPath`, not `DrawString`.** The path gives the
+  glyph's real *ink* rectangle to fit and centre on. Symbol fonts carry
+  asymmetric ascent/descent, so centring by the line box sits every glyph high —
+  and by a different amount each, which a row of icons shows up immediately. The
+  fill colour *is* the tint, so there is no recolouring pass to get wrong, and
+  `FillPath` obeys `SmoothingMode`, sidestepping text-rendering hints entirely.
+- **The font is probed with `new FontFamily(name)` inside a try/catch.**
+  `new Font(name, …)` does *not* throw for a missing family — it silently
+  substitutes and renders tofu. Falls back Fluent → MDL2 → the bundled cat.
+- **Every codepoint is one that exists in Segoe MDL2 Assets** (the Windows 10
+  font), so it is also in Windows 11's Fluent set. GDI+ has no glyph-exists test
+  and a family-level fallback cannot help when the family is present but the
+  glyph is not, so a Fluent-only codepoint would be an empty box on Windows 10
+  with nothing to catch it.
+- **Renders are cached by (id, colour, size) and handed out as copies.**
+  `OverlayForm.ReplaceIcon` disposes the bitmap it was given, so returning the
+  cached instance would destroy it under every other consumer.
+
+### 5.3 Custom overlay images — `src/IconStore.cs`
 
 A chosen image is **copied** into `%APPDATA%\CatFoil\icons\{overlayId}-{normal|fullscreen}.{ext}`
 so the badge survives the original being moved or deleted; settings store only the

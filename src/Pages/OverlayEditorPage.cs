@@ -116,20 +116,45 @@ internal sealed class OverlayEditorPage : SettingsPage
         var useDefault = new RadioButton
         {
             Text = "Default cat", AutoSize = true, Font = BodyFont,
-            Checked = !s.UseCustomIcon, Location = new Point(4, y),
+            Checked = s.IconSource == OverlayIconSource.Default, Location = new Point(4, y),
         };
         _body.Controls.Add(useDefault);
         y += 26;
 
+        var useGallery = new RadioButton
+        {
+            Text = "Built-in icon", AutoSize = true, Font = BodyFont,
+            Checked = s.IconSource == OverlayIconSource.Gallery, Location = new Point(4, y),
+            Enabled = IconGallery.IsAvailable,
+        };
+        _body.Controls.Add(useGallery);
+        y += 26;
+
+        var strip = BuildGalleryStrip(s, new Point(18, y));
+        _body.Controls.Add(strip);
+        y += strip.Height + 6;
+
+        var tintLabel = new Label { Text = "Icon colour", AutoSize = true, Font = BodyFont, Location = new Point(18, y + 6) };
+        var tint = new Button
+        {
+            Bounds = new Rectangle(115, y, 60, 26),
+            BackColor = HexColor.Parse(s.IconColor, Color.White),
+            FlatStyle = FlatStyle.Flat,
+            TabStop = false,
+        };
+        _body.Controls.Add(tintLabel);
+        _body.Controls.Add(tint);
+        y += 34;
+
         var useCustom = new RadioButton
         {
             Text = "Custom image", AutoSize = true, Font = BodyFont,
-            Checked = s.UseCustomIcon, Location = new Point(4, y),
+            Checked = s.IconSource == OverlayIconSource.Custom, Location = new Point(4, y),
         };
         var browse = new Button
         {
             Text = "Choose…", Bounds = new Rectangle(150, y - 4, 90, 27),
-            Enabled = s.UseCustomIcon, TabStop = false,
+            Enabled = s.IconSource == OverlayIconSource.Custom, TabStop = false,
         };
         _body.Controls.Add(useCustom);
         _body.Controls.Add(browse);
@@ -137,7 +162,7 @@ internal sealed class OverlayEditorPage : SettingsPage
 
         var file = new Label
         {
-            Text = s.UseCustomIcon && !string.IsNullOrWhiteSpace(s.CustomIconFile)
+            Text = s.IconSource == OverlayIconSource.Custom && !string.IsNullOrWhiteSpace(s.CustomIconFile)
                 ? "(custom image)" : "(no image chosen)",
             AutoSize = false,
             Bounds = new Rectangle(4, y, BodyWidth - 8, 18),
@@ -147,19 +172,41 @@ internal sealed class OverlayEditorPage : SettingsPage
         _body.Controls.Add(file);
         y += 26;
 
+        void SyncIconEnabled(OverlayIconSource source)
+        {
+            strip.Enabled = source == OverlayIconSource.Gallery;
+            tint.Enabled = source == OverlayIconSource.Gallery;
+            tintLabel.Enabled = source == OverlayIconSource.Gallery;
+            browse.Enabled = source == OverlayIconSource.Custom;
+        }
+        SyncIconEnabled(s.IconSource);
+
         useDefault.CheckedChanged += (_, _) =>
         {
             if (!useDefault.Checked) return;
-            browse.Enabled = false;
-            Edit(x => x.UseCustomIcon = false);
+            SyncIconEnabled(OverlayIconSource.Default);
+            SetIconSource(OverlayIconSource.Default);
+        };
+        useGallery.CheckedChanged += (_, _) =>
+        {
+            if (!useGallery.Checked) return;
+            SyncIconEnabled(OverlayIconSource.Gallery);
+            SetIconSource(OverlayIconSource.Gallery);
         };
         useCustom.CheckedChanged += (_, _) =>
         {
             if (!useCustom.Checked) return;
-            browse.Enabled = true;
-            Edit(x => x.UseCustomIcon = true);
+            SyncIconEnabled(OverlayIconSource.Custom);
+            SetIconSource(OverlayIconSource.Custom);
         };
         browse.Click += (_, _) => ChooseImage(file);
+        tint.Click += (_, _) => ChooseIconColour(tint, strip);
+
+        if (!IconGallery.IsAvailable)
+        {
+            AddNote("Built-in icons need a Windows symbol font that isn't installed here.",
+                    new Point(18, strip.Top + 4));
+        }
 
         y = Section("Appearance", y);
         y = Slider(y, "Size", OverlayStateSettings.MinSize, OverlayStateSettings.MaxSize,
@@ -251,6 +298,104 @@ internal sealed class OverlayEditorPage : SettingsPage
     }
 
     private static readonly Color DefaultBackground = Color.FromArgb(45, 45, 48);
+
+    // The picker: one small button per built-in icon, drawn with the glyph
+    // itself so the choice is made by recognising it rather than reading a name.
+    private FlowLayoutPanel BuildGalleryStrip(OverlayStateSettings s, Point location)
+    {
+        var strip = new FlowLayoutPanel
+        {
+            Location = location,
+            Size = new Size(BodyWidth - 24, 76),
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
+        };
+
+        string selected = s.GalleryIconId ?? IconGallery.DefaultId;
+        Color tint = HexColor.Parse(s.IconColor, Color.White);
+
+        foreach (IconGallery.Entry entry in IconGallery.Icons)
+        {
+            // Tinted for the swatch only if the chosen colour is dark enough to
+            // read on a light button; otherwise the picker would be blank.
+            Color swatch = tint.GetBrightness() > 0.75f ? Color.FromArgb(60, 60, 65) : tint;
+            var button = new Button
+            {
+                Size = new Size(34, 34),
+                Margin = new Padding(0, 0, 4, 4),
+                FlatStyle = FlatStyle.Flat,
+                TabStop = false,
+                Image = IconGallery.Render(entry.Id, swatch, 22),
+                Tag = entry.Id,
+            };
+            button.FlatAppearance.BorderSize = entry.Id == selected ? 2 : 1;
+            button.FlatAppearance.BorderColor = entry.Id == selected
+                ? Color.FromArgb(58, 110, 190)
+                : Color.FromArgb(210, 210, 210);
+            Tip.SetToolTip(button, entry.Label);
+
+            string id = entry.Id;
+            button.Click += (_, _) =>
+            {
+                foreach (Control c in strip.Controls)
+                    if (c is Button b)
+                    {
+                        bool on = (string?)b.Tag == id;
+                        b.FlatAppearance.BorderSize = on ? 2 : 1;
+                        b.FlatAppearance.BorderColor = on
+                            ? Color.FromArgb(58, 110, 190)
+                            : Color.FromArgb(210, 210, 210);
+                    }
+                Edit(x => { x.IconSource = OverlayIconSource.Gallery; x.GalleryIconId = id; });
+                LoadPreviewIcon();
+                RefreshPreview();
+            };
+            strip.Controls.Add(button);
+        }
+        return strip;
+    }
+
+    private void AddNote(string text, Point location) => _body.Controls.Add(new Label
+    {
+        Text = text,
+        AutoSize = false,
+        Bounds = new Rectangle(location.X, location.Y, BodyWidth - 24, 34),
+        ForeColor = Color.FromArgb(150, 90, 40),
+        Font = BodyFont,
+    });
+
+    private void SetIconSource(OverlayIconSource source)
+    {
+        Edit(x =>
+        {
+            x.IconSource = source;
+            // A gallery icon needs an id the first time it is chosen.
+            if (source == OverlayIconSource.Gallery && string.IsNullOrWhiteSpace(x.GalleryIconId))
+                x.GalleryIconId = IconGallery.DefaultId;
+        });
+        LoadPreviewIcon();
+        RefreshPreview();
+    }
+
+    private void ChooseIconColour(Button swatch, Control strip)
+    {
+        using var dlg = new ColorDialog
+        {
+            Color = HexColor.Parse(State.IconColor, Color.White),
+            FullOpen = true,
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        swatch.BackColor = dlg.Color;
+        Edit(x => x.IconColor = HexColor.ToHex(dlg.Color));
+        LoadPreviewIcon();
+        RefreshPreview();
+        // Redraw the picker so its swatches follow the new colour.
+        BuildBody();
+        _ = strip;
+    }
 
     private void BuildPreview()
     {

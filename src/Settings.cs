@@ -158,6 +158,12 @@ public sealed class Settings
             state.Shape = state.ShowBackground.Value ? OverlayShape.RoundedSquare : OverlayShape.None;
             state.ShowBackground = null;
         }
+
+        if (state.UseCustomIcon.HasValue)
+        {
+            state.IconSource = state.UseCustomIcon.Value ? OverlayIconSource.Custom : OverlayIconSource.Default;
+            state.UseCustomIcon = null;
+        }
     }
 
     public void Save()
@@ -208,7 +214,19 @@ public sealed class OverlayStateSettings
     public const int MinOpacity = 10;
 
     public bool Visible { get; set; } = true;
-    public bool UseCustomIcon { get; set; }
+
+    /// <summary>Where the badge's picture comes from.</summary>
+    [JsonConverter(typeof(LenientEnumConverter<OverlayIconSource>))]
+    public OverlayIconSource IconSource { get; set; } = OverlayIconSource.Default;
+
+    /// <summary>Which built-in icon, when <see cref="IconSource"/> is Gallery.</summary>
+    public string? GalleryIconId { get; set; }
+
+    /// <summary>Tint for a gallery icon as <c>#RRGGBB</c>. Gallery icons are
+    /// single-colour outlines; the bundled cat is full-colour artwork and is
+    /// never tinted.</summary>
+    public string? IconColor { get; set; }
+
     public string? CustomIconFile { get; set; }
     public int Size { get; set; } = 64;
 
@@ -233,11 +251,13 @@ public sealed class OverlayStateSettings
     /// <summary>Opacity of the ring flashed on a blocked keypress. 0 hides it.</summary>
     public int RingOpacity { get; set; } = 100;
 
-    // --- Legacy (0.3 and earlier) -------------------------------------------
-    // Superseded by Shape. Read once, folded in by Settings.EnsureOverlays, then
-    // nulled so it is never written again.
+    // --- Legacy -------------------------------------------------------------
+    // Superseded by Shape and IconSource. Read once, folded in by
+    // Settings.EnsureOverlays, then nulled so they are never written again.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? ShowBackground { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? UseCustomIcon { get; set; }
 
     // settings.json is text a user can edit, so nothing here can be trusted to
     // be in range.
@@ -261,6 +281,16 @@ public sealed class OverlayStateSettings
     /// complete one.
     /// </summary>
     public OverlayStateSettings Clone() => (OverlayStateSettings)MemberwiseClone();
+}
+
+/// <summary>Where a badge's picture comes from.</summary>
+public enum OverlayIconSource
+{
+    // Default is the zero value, so an overlay with nothing recorded shows the
+    // bundled cat — and an unreadable value falls back to it too.
+    Default,
+    Gallery,
+    Custom,
 }
 
 /// <summary>The box painted behind the badge icon.</summary>
