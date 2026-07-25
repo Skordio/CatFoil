@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -19,7 +21,8 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly KeyboardHook _hook = new();
     private readonly HotkeyManager _hotkey = new();
     private readonly MainForm _mainForm;
-    private readonly OverlayForm _overlay;
+    // One live badge per configured overlay, reconciled by SyncOverlays.
+    private readonly List<OverlayForm> _overlayForms = new();
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _lockMenuItem;
     // Periodically re-arms the hotkey and hook: Windows quietly drops both after
@@ -56,15 +59,7 @@ public sealed class TrayAppContext : ApplicationContext
         _mainForm.SettingsRequested += ShowSettings;
         _mainForm.ExitRequested += ExitApp;
 
-        _overlay = new OverlayForm(_appIcon);
-        _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
-        _overlay.ApplySavedPosition(_settings.OverlayPosition);
-        _overlay.OpenRequested += ShowMainWindow;
-        _overlay.PositionChanged += p =>
-        {
-            _settings.OverlayPosition = p;
-            _settings.Save();
-        };
+        SyncOverlays();
 
         // Hook events fire mid-hook; defer the real work so the hook returns fast.
         _hook.BlockedKeyPress += () => _mainForm.BeginInvoke(OnBlockedKey);
@@ -165,7 +160,7 @@ public sealed class TrayAppContext : ApplicationContext
             _settings.Save();
             if (_settings.SoundOnLockUnlock) Sounds.Lock();
             _mainForm.SetLockedUi(true);
-            _overlay.SetActive(_settings.ShowOverlay);
+            ApplyOverlayActivation();
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
             _lockMenuItem.Text = "Unlock Keyboard";
         }
@@ -176,8 +171,8 @@ public sealed class TrayAppContext : ApplicationContext
             _hook.Unlock();
             FlushLockStats();
             if (_settings.SoundOnLockUnlock) Sounds.Unlock();
-            _overlay.SetActive(false);
-            _overlay.SetRemaining(null);
+            ApplyOverlayActivation();   // the hook is already unlocked, so all badges go away
+            SetOverlayRemaining(null);
             _mainForm.SetLockedUi(false);
             _tray.Text = "CatFoil — keyboard active";
             _lockMenuItem.Text = "Lock Keyboard";
@@ -241,7 +236,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         var remaining = TimeSpan.FromSeconds(_timedSecondsLeft);
         _mainForm.ShowLockCountdown(remaining);
-        _overlay.SetRemaining(remaining);
+        SetOverlayRemaining(remaining);
     }
 
     private void OnBlockedKey()
@@ -254,11 +249,15 @@ public sealed class TrayAppContext : ApplicationContext
         _settings.StatBlockedKeys++;
 
         // The window is the unlock failsafe: bring it back if the user has no
-        // visible way into CatFoil (or it's sitting minimized).
-        if ((!_mainForm.Visible && !_overlay.Visible) || _mainForm.WindowState == FormWindowState.Minimized)
+        // visible way into CatFoil (or it's sitting minimized). With several
+        // overlays configured, any one of them still on screen is a way in.
+        if ((!_mainForm.Visible && !_overlayForms.Any(f => f.Visible))
+            || _mainForm.WindowState == FormWindowState.Minimized)
+        {
             ShowMainWindow();
+        }
 
-        _overlay.FlashBlockedKey();
+        foreach (OverlayForm form in _overlayForms) form.FlashBlockedKey();
 
         // Throttle the blocked-key sound so a held key doesn't machine-gun it.
         if (_settings.SoundOnBlockedKey)
@@ -270,6 +269,78 @@ public sealed class TrayAppContext : ApplicationContext
                 Sounds.Blocked();
             }
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Overlays
+    // ---------------------------------------------------------------
+
+    /// <summary>
+    /// Brings the live badges in line with the configured overlays: closes the
+    /// ones whose item is gone, creates the ones that are new, and pushes the
+    /// current appearance to the rest. Safe to call any time settings change —
+    /// it is how an edit reaches the screen.
+    /// </summary>
+    private void SyncOverlays()
+    {
+        List<OverlayItem> items = _settings.EnsureOverlays();
+
+        for (int i = _overlayForms.Count - 1; i >= 0; i--)
+        {
+            OverlayForm form = _overlayForms[i];
+            if (items.Any(item => item.Id == form.OverlayId)) continue;
+            _overlayForms.RemoveAt(i);
+            form.SetActive(false);
+            form.Close();
+            form.Dispose();
+        }
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            OverlayItem item = items[i];
+            OverlayForm form = _overlayForms.FirstOrDefault(f => f.OverlayId == item.Id)
+                               ?? CreateOverlay(item, cascadeIndex: i);
+            form.ApplyAppearance(item.Normal, item.Fullscreen);
+        }
+
+        ApplyOverlayActivation();
+    }
+
+    private OverlayForm CreateOverlay(OverlayItem item, int cascadeIndex)
+    {
+        var form = new OverlayForm(_appIcon, item.Id);
+        form.ApplySavedPosition(item.Position, cascadeIndex);
+        form.OpenRequested += ShowMainWindow;
+        // Look the item up again on each drag rather than capturing it: the
+        // settings object outlives any particular OverlayItem instance.
+        form.PositionChanged += p => OnOverlayMoved(item.Id, p);
+        _overlayForms.Add(form);
+        return form;
+    }
+
+    private void OnOverlayMoved(string overlayId, Point position)
+    {
+        OverlayItem? item = _settings.Overlays.FirstOrDefault(o => o.Id == overlayId);
+        if (item is null) return;
+        item.Position = position;
+        _settings.Save();
+    }
+
+    // A badge is on screen only while the keyboard is locked, the master
+    // "show overlay" switch is on, and that particular overlay is enabled.
+    private void ApplyOverlayActivation()
+    {
+        bool show = _hook.IsLocked && _settings.ShowOverlay;
+        foreach (OverlayForm form in _overlayForms)
+        {
+            OverlayItem? item = _settings.Overlays.FirstOrDefault(o => o.Id == form.OverlayId);
+            form.SetActive(show && item is { Enabled: true });
+        }
+    }
+
+    private void SetOverlayRemaining(TimeSpan? remaining)
+    {
+        foreach (OverlayForm form in _overlayForms) form.SetRemaining(remaining);
     }
 
     // ---------------------------------------------------------------
@@ -351,9 +422,7 @@ public sealed class TrayAppContext : ApplicationContext
             ApplyHotkeySettings();
             ApplyStartupSettings();
             _mainForm.RefreshHotkey();
-            _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
-            if (_hook.IsLocked)
-                _overlay.SetActive(_settings.ShowOverlay);
+            SyncOverlays();
             ApplyIdleTimer();
         };
         // The elevated relaunch is already running; quit so it can take over.
@@ -484,7 +553,8 @@ public sealed class TrayAppContext : ApplicationContext
         _hotkey.Dispose();
         _hook.Dispose();
         _mainForm.AllowClose = true;
-        _overlay.Close();
+        foreach (OverlayForm form in _overlayForms) form.Close();
+        _overlayForms.Clear();
         _mainForm.Close();
         ExitThread();
     }

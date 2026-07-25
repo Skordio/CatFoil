@@ -18,14 +18,16 @@ public sealed class OverlaySettingsForm : Form
     private static readonly Font DialogFont = new("Segoe UI", 9.5f);
 
     private readonly Settings _settings;
+    private readonly OverlayItem _item;
     private readonly Bitmap _defaultIcon;
     private readonly StateEditor _normalEditor;
     private readonly StateEditor _fullscreenEditor;
 
     public event Action? SettingsSaved;
 
-    public OverlaySettingsForm(Settings settings, Icon appIcon)
+    public OverlaySettingsForm(OverlayItem item, Settings settings, Icon appIcon)
     {
+        _item = item;
         _settings = settings;
         using (var sized = new Icon(appIcon, 256, 256))
             _defaultIcon = sized.ToBitmap();
@@ -49,9 +51,9 @@ public sealed class OverlaySettingsForm : Form
             ForeColor = Color.FromArgb(70, 70, 70),
         };
 
-        _normalEditor = new StateEditor("Normal (no fullscreen app)", _settings.OverlayNormal, _defaultIcon)
+        _normalEditor = new StateEditor("Normal (no fullscreen app)", _item.Normal, _defaultIcon)
         { Location = new Point(12, 84) };
-        _fullscreenEditor = new StateEditor("When a fullscreen app is running", _settings.OverlayFullscreen, _defaultIcon)
+        _fullscreenEditor = new StateEditor("When a fullscreen app is running", _item.Fullscreen, _defaultIcon)
         { Location = new Point(12, 392) };
 
         var btnOk = new Button { Text = "OK", Bounds = new Rectangle(464, 704, 85, 30) };
@@ -66,8 +68,25 @@ public sealed class OverlaySettingsForm : Form
 
     private void OnOk(object? sender, EventArgs e)
     {
-        _normalEditor.CommitTo(_settings.OverlayNormal, "overlay-normal");
-        _fullscreenEditor.CommitTo(_settings.OverlayFullscreen, "overlay-fullscreen");
+        try
+        {
+            _normalEditor.CommitTo(_item.Normal, _item.Id, "normal");
+            _fullscreenEditor.CommitTo(_item.Fullscreen, _item.Id, "fullscreen");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or NotSupportedException or ArgumentException)
+        {
+            // Stay open rather than close on a half-applied change, so the
+            // image the user picked isn't silently dropped.
+            MessageBox.Show(this,
+                "Could not save the overlay image:\n\n" + ex.Message,
+                "Overlay Appearance", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Replacing an image with one of a different type leaves the old file
+        // behind under its old name; sweep those up before persisting.
+        IconStore.CollectGarbage(_settings);
         _settings.Save();
         SettingsSaved?.Invoke();
         Close();
@@ -134,8 +153,10 @@ public sealed class OverlaySettingsForm : Form
             _lblFile.AutoSize = false;
             _lblFile.Bounds = new Rectangle(20, 108, 320, 18);
             _lblFile.ForeColor = Color.FromArgb(110, 110, 110);
+            // The stored copy is named after the overlay's id, which says nothing
+            // to the user; only a file just picked has a name worth showing.
             _lblFile.Text = _working.UseCustomIcon && _working.CustomIconFile is not null
-                ? _working.CustomIconFile : "(no file chosen)";
+                ? "(custom image)" : "(no file chosen)";
 
             _chkBackground.Text = "Show background box";
             _chkBackground.AutoSize = true;
@@ -207,7 +228,7 @@ public sealed class OverlaySettingsForm : Form
             string? path = _pendingSourcePath;
             if (path is null && _working.CustomIconFile is not null)
             {
-                string stored = Path.Combine(Settings.Directory, _working.CustomIconFile);
+                string stored = IconStore.FullPath(_working.CustomIconFile);
                 if (File.Exists(stored)) path = stored;
             }
             if (path is null || !File.Exists(path)) return;
@@ -240,18 +261,12 @@ public sealed class OverlaySettingsForm : Form
         private void Refresh2() => _preview.Show(_working, _previewIcon);
 
         /// <summary>Writes this editor's state into <paramref name="target"/>,
-        /// copying any newly chosen custom image into the CatFoil folder.</summary>
-        public void CommitTo(OverlayStateSettings target, string baseName)
+        /// copying any newly chosen custom image into the icon store. Throws if
+        /// that copy fails, leaving <paramref name="target"/> untouched.</summary>
+        public void CommitTo(OverlayStateSettings target, string overlayId, string stateName)
         {
             if (_working.UseCustomIcon && _pendingSourcePath is not null)
-            {
-                string ext = Path.GetExtension(_pendingSourcePath).ToLowerInvariant();
-                if (ext is not (".png" or ".ico" or ".jpg" or ".jpeg" or ".bmp")) ext = ".png";
-                string destName = baseName + ext;
-                System.IO.Directory.CreateDirectory(Settings.Directory);
-                File.Copy(_pendingSourcePath, Path.Combine(Settings.Directory, destName), overwrite: true);
-                _working.CustomIconFile = destName;
-            }
+                _working.CustomIconFile = IconStore.Import(_pendingSourcePath, overlayId, stateName);
 
             target.Visible = _working.Visible;
             target.UseCustomIcon = _working.UseCustomIcon;

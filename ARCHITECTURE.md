@@ -68,8 +68,10 @@ Pages:
   ("press keys") · a **Multi-key chord** checkbox (tooltip explains the
   leak-through trade-off); capture logic differs for classic vs chord mode.
   Then auto-lock: enable checkbox + minutes selector.
-- **Overlays** — Show the cat overlay while locked, plus the **"Customize
-  overlay…"** button opening §2.3.
+- **Overlays** — Show the cat overlay while locked (the master switch over every
+  configured overlay), plus the **"Customize overlay…"** button opening §2.3. The
+  model already holds a *list* of overlays (§5.1); this page still edits only the
+  first, until it grows a list UI.
 - **Sounds** — play a sound on lock/unlock · play a (throttled) sound when a key
   is blocked while locked. Both use the user's Windows system sounds (tooltip
   points at the Windows sound settings if the mapped events are "(None)").
@@ -105,9 +107,12 @@ A dialog (652×746) opened from Settings → Overlays → "Customize overlay…"
 Each editor has: show-in-this-state toggle · Default cat / Custom image radios +
 **Browse…** · size slider (32–256 px) · show-background-box toggle · and a
 **checkerboard live preview** (`PreviewBox`) that paints via the shared
-`OverlayRenderer` at true 1:1 size. On **OK**, any newly chosen custom image is
-copied into `%APPDATA%\CatFoil\` as `overlay-normal.<ext>` / `overlay-fullscreen.<ext>`,
-the two `OverlayStateSettings` are written, and `SettingsSaved` is raised.
+`OverlayRenderer` at true 1:1 size. The dialog edits **one `OverlayItem`** (§5.1) —
+currently the first, since the Overlays page has no list yet. On **OK**, any newly
+chosen custom image is copied into the icon store (§5.2), the item's two
+`OverlayStateSettings` are written, orphaned images are swept, and `SettingsSaved`
+is raised. A failed image copy reports and leaves the dialog open rather than
+closing on a half-applied change.
 
 ### 2.4 Welcome window — `src/WelcomeForm.cs`
 Shown once on first launch (flag `Settings.WelcomeShown`), and re-openable from
@@ -118,7 +123,19 @@ and the tray icon. Single **Get started** button.
 ### 2.5 Locked overlay badge — `src/OverlayForm.cs`
 A small, borderless, always-on-top **layered window** (WS_EX_LAYERED +
 `UpdateLayeredWindow` pushing a 32bpp ARGB bitmap) shown while locked. It never
-steals focus (WS_EX_NOACTIVATE, `ShowWithoutActivation`). Features:
+steals focus (WS_EX_NOACTIVATE, `ShowWithoutActivation`).
+
+**There is one of these per `OverlayItem`** (§5.1), not one per app. Each form
+carries the `OverlayId` it renders, and `TrayAppContext.SyncOverlays()` reconciles
+the live forms against the configured items — closing forms whose item is gone,
+creating forms for new items, and pushing appearance to the rest. It is the single
+path by which an overlay edit reaches the screen. A badge is active only while
+*locked* **and** the master `ShowOverlay` switch is on **and** that item's
+`Enabled` is true (`ApplyOverlayActivation`). An item with no saved position falls
+back to the top-right corner, **stepped down 88 px per item** so a newly added
+badge never spawns exactly on top of an existing one.
+
+Features:
 - **Per-state appearance**: a 1-second poll picks Normal vs Fullscreen state via
   `ForegroundIsFullscreen()` and shows / hides / resizes accordingly. Re-compositing
   the layered window is skipped unless the resolved icon, size, countdown, or flash
@@ -172,11 +189,43 @@ the always-available escape hatch.
 JSON at `%APPDATA%\CatFoil\settings.json` (`Keys` serialized as string flags).
 Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled`, `UseChordHotkey`
 (default off) + `ChordModifiers`/`ChordKeys`, `MinimizeToTrayOnClose`,
-`StartWithWindows`, `StartElevatedOnBoot`, `StartMinimized`, `ShowOverlay`, `WelcomeShown`,
-`OverlayPosition`, per-state `OverlayNormal`/`OverlayFullscreen`
-(`OverlayStateSettings`: Visible, UseCustomIcon, CustomIconFile, Size 32–256,
-ShowBackground), plus `AutoLockEnabled`/`AutoLockMinutes`. Corrupt files fall back
-to defaults.
+`StartWithWindows`, `StartElevatedOnBoot`, `StartMinimized`, `ShowOverlay`,
+`WelcomeShown`, `Overlays` (§5.1), plus `AutoLockEnabled`/`AutoLockMinutes` and the
+lifetime `Stat*` counters. Corrupt files fall back to defaults. `Save()` writes to a
+temp file and renames, so an interrupted save leaves the old or the new file — never
+a truncated one.
+
+### 5.1 Overlays — `Settings.Overlays`
+
+A **list of `OverlayItem`**, so several badges can be on screen at once. Each item
+has a stable `Id` (a GUID, which also names its image files on disk and must never
+be reused after a delete), a `Name`, an `Enabled` switch, an optional `Position`,
+and the two per-state `OverlayStateSettings` (`Normal` / `Fullscreen`:
+Visible, UseCustomIcon, CustomIconFile, Size 32–256, ShowBackground).
+`ShowOverlay` remains a single master switch over all of them.
+
+**Legacy migration.** 0.3 and earlier stored exactly one overlay, as the loose
+`OverlayPosition` / `OverlayNormal` / `OverlayFullscreen` properties. Those are
+still deserialized, but they are **write-suppressed** (`JsonIgnoreCondition.WhenWritingNull`)
+and `EnsureOverlays()` folds them into a single `OverlayItem` on load, then nulls
+them — so upgrading keeps a user's custom icon, size and position instead of
+resetting to a default badge. The same code path produces the default overlay on a
+fresh install, where all three are simply absent. `EnsureOverlays()` is idempotent
+and guarantees a non-empty list, so any caller needing "the overlays" can just call
+it. (One-way: a settings.json written by 0.4 has no overlay for 0.3 to read.)
+
+### 5.2 Custom overlay images — `src/IconStore.cs`
+
+A chosen image is **copied** into `%APPDATA%\CatFoil\icons\{overlayId}-{normal|fullscreen}.{ext}`
+so the badge survives the original being moved or deleted; settings store only the
+path **relative to** `Settings.Directory`, which keeps the portable EXE portable.
+`CollectGarbage()` deletes stored images nothing refers to any more — left behind
+when an overlay is removed, switched back to the default icon, or given a
+replacement of a different file type (which lands under a different name). It only
+ever considers files in the `icons` folder plus the two fixed names 0.3 used
+(`overlay-normal.*` / `overlay-fullscreen.*`); nothing else in `%APPDATA%\CatFoil`
+is a deletion candidate. Legacy paths still resolve unchanged, so upgrading moves
+no files.
 
 Startup is managed by `src/Startup.cs`: "Start with Windows" is an
 `HKCU\...\Run\CatFoil` value (non-elevated), re-applied on every launch and save;

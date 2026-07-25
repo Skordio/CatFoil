@@ -32,7 +32,10 @@ internal sealed class OverlaysPage : SettingsPage
     private void OnCustomize(object? sender, EventArgs e)
     {
         Form? owner = FindForm();
-        using var overlay = new OverlaySettingsForm(Settings, owner?.Icon ?? SystemIcons.Application);
+        // Settings can hold several overlays, but until the Overlays page grows
+        // a list this dialog edits the first (and so far only) one.
+        OverlayItem item = Settings.EnsureOverlays()[0];
+        using var overlay = new OverlaySettingsForm(item, Settings, owner?.Icon ?? SystemIcons.Application);
         // That dialog saves its own changes; just re-announce so the tray
         // applies the new look to the live badge.
         overlay.SettingsSaved += Session.NotifyChanged;
