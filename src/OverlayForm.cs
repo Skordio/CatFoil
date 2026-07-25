@@ -162,37 +162,23 @@ public sealed class OverlayForm : Form
         slot = next;
     }
 
-    private Bitmap LoadIcon(OverlayStateSettings state)
-    {
-        if (!state.UseCustomIcon || string.IsNullOrWhiteSpace(state.CustomIconFile))
-            return _defaultIcon;
-        try
-        {
-            string path = IconStore.FullPath(state.CustomIconFile);
-            if (!File.Exists(path)) return _defaultIcon;
-            // Copy into memory so the file on disk isn't locked open.
-            using var fromFile = new Bitmap(path);
-            return new Bitmap(fromFile);
-        }
-        catch
-        {
-            return _defaultIcon;   // unreadable/corrupt file — fall back
-        }
-    }
+    private Bitmap LoadIcon(OverlayStateSettings state) => OverlayIcon.Load(state, _defaultIcon);
 
     /// <summary>
     /// Places the badge where the user last dragged it, or — for one that has
-    /// never been moved — at the top-right corner. Badges after the first step
-    /// down from there by <paramref name="cascadeIndex"/> so a newly added
-    /// overlay doesn't spawn exactly on top of an existing one.
+    /// never been moved — three quarters of the way across the screen and three
+    /// quarters of the way up it: clear of the middle, but not tucked so far
+    /// into a corner that it goes unnoticed. Badges after the first step down
+    /// from there by <paramref name="cascadeIndex"/> so a newly added overlay
+    /// doesn't spawn exactly on top of an existing one.
     /// </summary>
     public void ApplySavedPosition(Point? saved, int cascadeIndex = 0)
     {
         const int CascadeStep = 88;   // clears a default 64px badge plus a gap
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         Point p = saved ?? new Point(
-            workArea.Right - Width - 16,
-            workArea.Top + 16 + cascadeIndex * CascadeStep);
+            workArea.Left + workArea.Width * 3 / 4 - Width / 2,
+            workArea.Top + workArea.Height / 4 - Height / 2 + cascadeIndex * CascadeStep);
         Location = ClampToScreen(p);
     }
 

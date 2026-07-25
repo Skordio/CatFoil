@@ -84,9 +84,7 @@ public sealed class OverlaySettingsForm : Form
             return;
         }
 
-        // Replacing an image with one of a different type leaves the old file
-        // behind under its old name; sweep those up before persisting.
-        IconStore.CollectGarbage(_settings);
+        // Orphaned images are swept when the settings window closes, not here.
         _settings.Save();
         SettingsSaved?.Invoke();
         Close();

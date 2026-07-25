@@ -58,8 +58,18 @@ Advanced's `schtasks.exe` query until the user goes there.
 
 `SettingsPage` (`src/Pages/SettingsPage.cs`) is the base: a single auto-sizing
 column inside an `AutoScroll` panel, with `AddSection` / `AddCheck` / `AddHint` /
-`AddRow` helpers and shared static fonts (a settings window can be reopened
-repeatedly, and WinForms never disposes a Font assigned to a control).
+`AddRow` / `AddStretchRow` / `ClearRows` helpers and shared static fonts (a
+settings window can be reopened repeatedly, and WinForms never disposes a Font
+assigned to a control).
+
+**Sub-pages.** Besides the six nav entries the shell can show one page reached
+from *within* another — `ShowSubPage` / `PopSubPage`, one deep. The header row
+grows a back arrow and a breadcrumb ("Overlays › Cat badge") while the nav list
+keeps highlighting the parent. Escape goes back rather than closing; changing nav
+selection discards the sub-page; and clicking the *already-selected* nav row pops
+too, since that raises no `SelectedIndexChanged` and would otherwise strand the
+user. A sub-page is owned by the shell and disposed when it goes away — it is
+never in `_pages`, so `Dispose` handles it separately.
 
 Pages:
 - **General** — Hide to tray on close · Start CatFoil when Windows starts ·
@@ -68,10 +78,17 @@ Pages:
   ("press keys") · a **Multi-key chord** checkbox (tooltip explains the
   leak-through trade-off); capture logic differs for classic vs chord mode.
   Then auto-lock: enable checkbox + minutes selector.
-- **Overlays** — Show the cat overlay while locked (the master switch over every
-  configured overlay), plus the **"Customize overlay…"** button opening §2.3. The
-  model already holds a *list* of overlays (§5.1); this page still edits only the
-  first, until it grows a list UI.
+- **Overlays** — Show overlays while locked (the master switch over every
+  configured overlay), then one **`OverlayCard`** per overlay (§5.1) and an
+  **Add overlay** button. Each card shows a live thumbnail painted through the
+  real `OverlayRenderer`, the name, a summary line, an **Enabled** toggle, an
+  **Edit** button and a **⋯** overflow menu holding Duplicate and Remove.
+  **Remove is disabled at one overlay** — the model guarantees a non-empty list,
+  so deleting the last one would immediately reappear as a fresh default badge.
+  Duplicate copies the original's image files to the copy's own id, and leaves
+  its `Position` null so it cascades rather than landing on top. The page is
+  rebuilt wholesale on each change, deferred via `BeginInvoke` because the
+  actions are raised from a card that the rebuild disposes.
 - **Sounds** — play a sound on lock/unlock · play a (throttled) sound when a key
   is blocked while locked. Both use the user's Windows system sounds (tooltip
   points at the Windows sound settings if the mapped events are "(None)").
@@ -89,7 +106,10 @@ object: `Apply()` makes the edit, raises `Changed` at once (the form re-raises i
 as `SettingsSaved`, so the tray applies it live), and schedules the disk write on
 a 500 ms debounce so dragging a spinner doesn't write settings.json per tick.
 `Flush()` forces the pending write — called on form close and before an elevated
-relaunch hands off. Escape closes the window.
+relaunch hands off. Closing the window also runs `IconStore.CollectGarbage`
+(§5.2): sweeping orphaned overlay images is deferred to here rather than done
+when an overlay is removed, so removing one and changing your mind inside the
+same visit doesn't cost you the image.
 
 While the hotkey box has focus the form raises `HotkeyCaptureChanged(true)`; the
 tray suspends the current hotkey until it goes false, so the combo being rebound
@@ -99,7 +119,8 @@ live in `src/HotkeyText.cs`, shared with the main window, welcome tour and tray
 balloons.
 
 ### 2.3 Overlay customization menu — `src/OverlaySettingsForm.cs`
-A dialog (652×746) opened from Settings → Overlays → "Customize overlay…". Two mirrored
+A dialog (652×746) opened from an overlay card's **Edit** button. (Being replaced
+by an editor sub-page; it is the last fixed-pixel dialog left.) Two mirrored
 **state editors** (`StateEditor`):
 - **Normal (no fullscreen app)**
 - **When a fullscreen app is running**
@@ -131,9 +152,12 @@ the live forms against the configured items — closing forms whose item is gone
 creating forms for new items, and pushing appearance to the rest. It is the single
 path by which an overlay edit reaches the screen. A badge is active only while
 *locked* **and** the master `ShowOverlay` switch is on **and** that item's
-`Enabled` is true (`ApplyOverlayActivation`). An item with no saved position falls
-back to the top-right corner, **stepped down 88 px per item** so a newly added
-badge never spawns exactly on top of an existing one.
+`Enabled` is true (`ApplyOverlayActivation`). An item with no saved position is
+placed **three quarters across the screen and three quarters up it** — clear of
+the middle, but not tucked so far into a corner it goes unnoticed — **stepped
+down 88 px per item** so a newly added badge never spawns on top of an existing
+one. Resolving which image to show is shared with the settings preview and the
+overlay list through `src/OverlayIcon.cs`.
 
 Features:
 - **Per-state appearance**: a 1-second poll picks Normal vs Fullscreen state via
@@ -219,9 +243,12 @@ it. (One-way: a settings.json written by 0.4 has no overlay for 0.3 to read.)
 A chosen image is **copied** into `%APPDATA%\CatFoil\icons\{overlayId}-{normal|fullscreen}.{ext}`
 so the badge survives the original being moved or deleted; settings store only the
 path **relative to** `Settings.Directory`, which keeps the portable EXE portable.
-`CollectGarbage()` deletes stored images nothing refers to any more — left behind
-when an overlay is removed, switched back to the default icon, or given a
-replacement of a different file type (which lands under a different name). It only
+`Duplicate()` copies an existing image to a new overlay's name, so a duplicated
+overlay owns its picture rather than sharing the original's file.
+`CollectGarbage()` — run when the settings window closes — deletes stored images
+nothing refers to any more, left behind when an overlay is removed, switched back
+to the default icon, or given a replacement of a different file type (which lands
+under a different name). It only
 ever considers files in the `icons` folder plus the two fixed names 0.3 used
 (`overlay-normal.*` / `overlay-fullscreen.*`); nothing else in `%APPDATA%\CatFoil`
 is a deletion candidate. Legacy paths still resolve unchanged, so upgrading moves

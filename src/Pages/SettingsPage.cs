@@ -106,6 +106,36 @@ internal abstract class SettingsPage : UserControl
         return control;
     }
 
+    /// <summary>
+    /// Appends a control stretched to the full width of the page, for rows that
+    /// are a block rather than a label — the overlay cards. Unlike
+    /// <see cref="AddRow"/> this keeps a right margin, so the control doesn't sit
+    /// flush against the edge of the scroll area.
+    /// </summary>
+    protected T AddStretchRow<T>(T control, int height, int topGap = 6) where T : Control
+    {
+        control.Height = height;
+        control.Margin = new Padding(0, topGap, 2, 0);
+        control.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+        // The row auto-sizes to the control, so Dock.Fill would collapse it.
+        control.Width = Math.Max(1, _stack.ClientSize.Width - control.Margin.Horizontal);
+        _stack.Controls.Add(control);
+        return control;
+    }
+
+    /// <summary>Removes everything added so far, so a page can rebuild itself.</summary>
+    protected void ClearRows()
+    {
+        // Dispose as we go: these controls are leaving the tree for good, and
+        // the page itself may live for the whole settings session.
+        while (_stack.Controls.Count > 0)
+        {
+            Control c = _stack.Controls[0];
+            _stack.Controls.RemoveAt(0);
+            c.Dispose();
+        }
+    }
+
     /// <summary>A left-to-right row of controls that sizes to its contents.</summary>
     protected static FlowLayoutPanel Row(params Control[] controls)
     {

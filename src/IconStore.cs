@@ -45,6 +45,37 @@ internal static class IconStore
     }
 
     /// <summary>
+    /// Copies an existing stored image to a new overlay's name, so a duplicated
+    /// overlay owns its picture instead of sharing the original's file. Returns
+    /// null — meaning "no custom image" — when there is nothing to copy or the
+    /// copy fails; a duplicate quietly falling back to the default cat is a far
+    /// better outcome than failing the duplicate outright.
+    /// </summary>
+    public static string? Duplicate(string? sourceRelative, string overlayId, string stateName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceRelative)) return null;
+
+        try
+        {
+            string source = FullPath(sourceRelative);
+            if (!File.Exists(source)) return null;
+
+            string ext = Path.GetExtension(source).ToLowerInvariant();
+            if (!AllowedExtensions.Contains(ext)) ext = ".png";
+
+            Directory.CreateDirectory(Folder);
+            string relative = Path.Combine(FolderName, $"{overlayId}-{stateName}{ext}");
+            File.Copy(source, FullPath(relative), overwrite: true);
+            return relative;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Deletes stored images nothing refers to any more. They are left behind
     /// when an overlay is removed, switched back to the default icon, or given a
     /// replacement image with a different file extension (which lands under a
