@@ -110,7 +110,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         };
         show.CheckedChanged += (_, _) => Edit(x => x.Visible = show.Checked);
         _body.Controls.Add(show);
-        y += 30;
+        y += 40;
 
         y = Section("Icon", y);
         var useDefault = new RadioButton
@@ -119,7 +119,7 @@ internal sealed class OverlayEditorPage : SettingsPage
             Checked = s.IconSource == OverlayIconSource.Default, Location = new Point(4, y),
         };
         _body.Controls.Add(useDefault);
-        y += 26;
+        y += 34;
 
         var useGallery = new RadioButton
         {
@@ -128,23 +128,23 @@ internal sealed class OverlayEditorPage : SettingsPage
             Enabled = IconGallery.IsAvailable,
         };
         _body.Controls.Add(useGallery);
-        y += 26;
+        y += 34;
 
         var strip = BuildGalleryStrip(s, new Point(18, y));
         _body.Controls.Add(strip);
-        y += strip.Height + 6;
+        y += strip.Height + 14;
 
-        var tintLabel = new Label { Text = "Icon colour", AutoSize = true, Font = BodyFont, Location = new Point(18, y + 6) };
+        var tintLabel = new Label { Text = "Icon colour", AutoSize = true, Font = BodyFont, Location = new Point(18, y + 8) };
         var tint = new Button
         {
-            Bounds = new Rectangle(115, y, 60, 26),
+            Bounds = new Rectangle(130, y, 72, 30),
             BackColor = HexColor.Parse(s.IconColor, Color.White),
             FlatStyle = FlatStyle.Flat,
             TabStop = false,
         };
         _body.Controls.Add(tintLabel);
         _body.Controls.Add(tint);
-        y += 34;
+        y += 44;
 
         var useCustom = new RadioButton
         {
@@ -153,12 +153,12 @@ internal sealed class OverlayEditorPage : SettingsPage
         };
         var browse = new Button
         {
-            Text = "Choose…", Bounds = new Rectangle(150, y - 4, 90, 27),
+            Text = "Choose…", Bounds = new Rectangle(160, y - 5, 104, 31),
             Enabled = s.IconSource == OverlayIconSource.Custom, TabStop = false,
         };
         _body.Controls.Add(useCustom);
         _body.Controls.Add(browse);
-        y += 28;
+        y += 36;
 
         var file = new Label
         {
@@ -170,7 +170,7 @@ internal sealed class OverlayEditorPage : SettingsPage
             Font = BodyFont,
         };
         _body.Controls.Add(file);
-        y += 26;
+        y += 32;
 
         void SyncIconEnabled(OverlayIconSource source)
         {
@@ -221,7 +221,7 @@ internal sealed class OverlayEditorPage : SettingsPage
             Location = new Point(0, y),
         };
         _body.Controls.Add(blocked);
-        y += 28;
+        y += 38;
 
         y = Slider(y, "When blocking", OverlayStateSettings.MinOpacity, 100,
                    Math.Clamp(s.BlockedOpacity, OverlayStateSettings.MinOpacity, 100), " %",
@@ -237,11 +237,11 @@ internal sealed class OverlayEditorPage : SettingsPage
                    v => Edit(x => x.RingOpacity = v));
 
         y = Section("Background", y);
-        var shapeLabel = new Label { Text = "Shape", AutoSize = true, Font = BodyFont, Location = new Point(0, y + 4) };
+        var shapeLabel = new Label { Text = "Shape", AutoSize = true, Font = BodyFont, Location = new Point(0, y + 6) };
         var shape = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Bounds = new Rectangle(115, y, 180, 24),
+            Bounds = new Rectangle(130, y, 190, 28),
             Font = BodyFont,
         };
         shape.Items.AddRange(new object[] { "Rounded square", "Square", "Circle", "None" });
@@ -261,12 +261,12 @@ internal sealed class OverlayEditorPage : SettingsPage
         });
         _body.Controls.Add(shapeLabel);
         _body.Controls.Add(shape);
-        y += 34;
+        y += 44;
 
-        var colourLabel = new Label { Text = "Colour", AutoSize = true, Font = BodyFont, Location = new Point(0, y + 6) };
+        var colourLabel = new Label { Text = "Colour", AutoSize = true, Font = BodyFont, Location = new Point(0, y + 8) };
         var colour = new Button
         {
-            Bounds = new Rectangle(115, y, 60, 26),
+            Bounds = new Rectangle(130, y, 72, 30),
             BackColor = HexColor.Parse(s.BackgroundColor, DefaultBackground),
             FlatStyle = FlatStyle.Flat,
             TabStop = false,
@@ -276,7 +276,7 @@ internal sealed class OverlayEditorPage : SettingsPage
             Text = HexColor.ToHex(HexColor.Parse(s.BackgroundColor, DefaultBackground)),
             AutoSize = true, Font = BodyFont,
             ForeColor = Color.FromArgb(110, 110, 110),
-            Location = new Point(185, y + 6),
+            Location = new Point(212, y + 8),
         };
         colour.Click += (_, _) => ChooseColour(colour, colourName);
         _body.Controls.Add(colourLabel);
@@ -304,7 +304,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         var strip = new FlowLayoutPanel
         {
             Location = location,
-            Size = new Size(BodyWidth - 24, 76),
+            Size = new Size(BodyWidth - 24, 100),
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true,
             Padding = Padding.Empty,
@@ -321,8 +321,8 @@ internal sealed class OverlayEditorPage : SettingsPage
             Color swatch = tint.GetBrightness() > 0.75f ? Color.FromArgb(60, 60, 65) : tint;
             var button = new Button
             {
-                Size = new Size(34, 34),
-                Margin = new Padding(0, 0, 4, 4),
+                Size = new Size(42, 42),
+                Margin = new Padding(0, 0, 6, 6),
                 FlatStyle = FlatStyle.Flat,
                 TabStop = false,
                 Image = IconGallery.Render(entry.Id, swatch, 22),
@@ -428,9 +428,9 @@ internal sealed class OverlayEditorPage : SettingsPage
         {
             Text = title, AutoSize = true, Font = SectionFont,
             ForeColor = Color.FromArgb(40, 40, 40),
-            Location = new Point(0, y + 6),
+            Location = new Point(0, y + 10),
         });
-        return y + 30;
+        return y + 42;
     }
 
     private int Slider(int y, string caption, int min, int max, int value, string suffix, Action<int> onChange,
@@ -440,18 +440,18 @@ internal sealed class OverlayEditorPage : SettingsPage
     private int Slider(int y, string caption, int min, int max, int value, string suffix, Action<int> onChange,
                        int indent, out Control[] row)
     {
-        var label = new Label { Text = caption, AutoSize = true, Font = BodyFont, Location = new Point(indent, y + 6) };
+        var label = new Label { Text = caption, AutoSize = true, Font = BodyFont, Location = new Point(indent, y + 10) };
         var track = new TrackBar
         {
             Minimum = min, Maximum = max, Value = Math.Clamp(value, min, max),
             TickFrequency = Math.Max(1, (max - min) / 8),
             SmallChange = 1, LargeChange = Math.Max(1, (max - min) / 10),
-            Bounds = new Rectangle(115, y, 165, 40),
+            Bounds = new Rectangle(130, y, 178, 45),
         };
         var readout = new Label
         {
             Text = track.Value + suffix, AutoSize = true, Font = BodyFont,
-            Location = new Point(288, y + 6),
+            Location = new Point(318, y + 10),
         };
         track.Scroll += (_, _) =>
         {
@@ -462,7 +462,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         _body.Controls.Add(track);
         _body.Controls.Add(readout);
         row = new Control[] { label, track, readout };
-        return y + 40;
+        return y + 52;
     }
 
     // Applies an edit to whichever state is being edited. The state object is

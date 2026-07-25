@@ -90,7 +90,9 @@ $stack = $page.Controls[0]
 $cards = @($stack.Controls | Where-Object { $_.GetType().Name -eq 'OverlayCard' })
 Check 'one card per overlay' ($cards.Count -eq 3) "cards=$($cards.Count)"
 Check 'cards stretch to the page width' ($cards[0].Width -gt 380) "w=$($cards[0].Width)"
-Check 'cards are the declared height' ($cards[0].Height -eq 78) "h=$($cards[0].Height)"
+# Read the constant rather than repeating it: a layout tweak shouldn't fail this.
+$declaredH = $cards[0].GetType().GetField('CardHeight').GetValue($null)
+Check 'cards are the declared height' ($cards[0].Height -eq $declaredH) "h=$($cards[0].Height) declared=$declaredH"
 Check 'cards do not overlap' ($cards[1].Top -ge $cards[0].Bottom) "$($cards[0].Bounds) / $($cards[1].Bounds)"
 Check 'card children stay inside the card' `
   (@($cards[0].Controls | Where-Object { $_.Right -gt $cards[0].ClientSize.Width -or $_.Bottom -gt $cards[0].ClientSize.Height }).Count -eq 0)

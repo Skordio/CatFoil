@@ -30,7 +30,7 @@ public sealed class SettingsForm : Form
     private readonly ListBox _nav = new();
     private readonly Panel _host = new();
     private readonly Label _header = new();
-    private readonly Button _back = new();
+    private readonly BackButton _back = new();
     private readonly TableLayoutPanel _headerRow;
     private SettingsPage? _current;
 
@@ -76,8 +76,11 @@ public sealed class SettingsForm : Form
         BackColor = Color.White;
         // Wide enough for the overlay editor, which puts a real-size preview
         // beside its controls; the minimum still fits that page without clipping.
-        ClientSize = new Size(900, 600);
-        MinimumSize = new Size(840, 520);
+        // Tall enough that the editor's controls aren't bisected by the bottom of
+        // the scroll viewport, which reads as a half-drawn row rather than as
+        // "there is more below".
+        ClientSize = new Size(900, 720);
+        MinimumSize = new Size(840, 560);
 
         _nav.Dock = DockStyle.Fill;
         _nav.BorderStyle = BorderStyle.None;
@@ -99,14 +102,9 @@ public sealed class SettingsForm : Form
         foreach (SettingsPage page in _pages)
             _nav.Items.Add(page.Title);
 
-        _back.Text = "‹";
-        _back.Font = HeaderFont;
-        _back.FlatStyle = FlatStyle.Flat;
-        _back.FlatAppearance.BorderSize = 0;
-        _back.BackColor = Color.White;
-        _back.Dock = DockStyle.Fill;
-        _back.Margin = new Padding(14, 10, 0, 10);
-        _back.TabStop = false;
+        _back.Size = new Size(34, 34);
+        _back.Anchor = AnchorStyles.Left;
+        _back.Margin = new Padding(16, 0, 0, 0);
         _back.Visible = false;
         _back.Click += (_, _) => PopSubPage();
 
@@ -247,7 +245,60 @@ public sealed class SettingsForm : Form
     private void SetBackVisible(bool visible)
     {
         _back.Visible = visible;
-        _headerRow.ColumnStyles[0].Width = visible ? 40f : 0f;
+        _headerRow.ColumnStyles[0].Width = visible ? 62f : 0f;
+    }
+
+    /// <summary>
+    /// The "go back" affordance: a dark rounded square with a white triangle.
+    /// It replaced a bare "‹" glyph, which at header size was both easy to miss
+    /// and clipped by its own bounds — a text glyph gives no control over how
+    /// much of the em box it actually fills.
+    /// </summary>
+    private sealed class BackButton : Control
+    {
+        private static readonly Color Idle = Color.FromArgb(64, 64, 68);
+        private static readonly Color Hover = Color.FromArgb(90, 90, 96);
+        private static readonly Color Down = Color.FromArgb(40, 40, 44);
+
+        private bool _hover;
+        private bool _down;
+
+        public BackButton()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
+                     | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            Cursor = Cursors.Hand;
+            TabStop = false;
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { _hover = false; _down = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { _down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { _down = false; Invalidate(); base.OnMouseUp(e); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(BackColor);
+
+            var box = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var fill = new SolidBrush(_down ? Down : _hover ? Hover : Idle))
+            using (var path = OverlayRenderer.RoundedRect(box, 7))
+                g.FillPath(fill, path);
+
+            // Triangle sized from the box so it stays centred at any scale.
+            float cx = Width / 2f, cy = Height / 2f;
+            float w = Width * 0.20f, h = Height * 0.26f;
+            var arrow = new[]
+            {
+                new PointF(cx - w, cy),
+                new PointF(cx + w * 0.8f, cy - h),
+                new PointF(cx + w * 0.8f, cy + h),
+            };
+            using var white = new SolidBrush(Color.White);
+            g.FillPolygon(white, arrow);
+        }
     }
 
     // The old dialog closed on Escape via its Cancel button; immediate-apply

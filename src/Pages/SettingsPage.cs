@@ -39,7 +39,10 @@ internal abstract class SettingsPage : UserControl
         AutoScroll = true;
         BackColor = Color.White;
         Font = BodyFont;
-        Padding = new Padding(24, 8, 24, 20);
+        // Generous bottom padding on purpose: it keeps the last row clear of the
+        // scroll viewport's edge, so a page that continues below never ends on a
+        // control sliced in half.
+        Padding = new Padding(28, 12, 28, 40);
 
         _stack = new TableLayoutPanel
         {
@@ -62,7 +65,7 @@ internal abstract class SettingsPage : UserControl
             AutoSize = true,
             Font = SectionFont,
             ForeColor = SectionColor,
-            Margin = new Padding(0, _stack.Controls.Count == 0 ? 0 : 20, 0, 6),
+            Margin = new Padding(0, _stack.Controls.Count == 0 ? 0 : 30, 0, 12),
         });
     }
 
@@ -75,7 +78,11 @@ internal abstract class SettingsPage : UserControl
             AutoSize = true,
             Font = BodyFont,
             Checked = value,
-            Margin = new Padding(indent, 3, 0, 3),
+            // Padding grows the control itself, so the clickable area grows with
+            // it — margin alone would only push neighbours away and leave the
+            // same thin strip to hit.
+            Padding = new Padding(0, 6, 0, 6),
+            Margin = new Padding(indent, 5, 0, 5),
         };
         check.CheckedChanged += (_, _) => onChanged(check.Checked);
         if (tip is not null) Tip.SetToolTip(check, tip);
@@ -90,18 +97,18 @@ internal abstract class SettingsPage : UserControl
         {
             Text = text,
             AutoSize = true,
-            MaximumSize = new Size(520, 0),
+            MaximumSize = new Size(560, 0),
             ForeColor = HintColor,
-            Margin = new Padding(indent, 0, 0, 6),
+            Margin = new Padding(indent, 2, 0, 12),
         };
         _stack.Controls.Add(label);
         return label;
     }
 
     /// <summary>Appends an arbitrary control (a composed row, a button, …).</summary>
-    protected T AddRow<T>(T control, int indent = 0, int topGap = 4) where T : Control
+    protected T AddRow<T>(T control, int indent = 0, int topGap = 8) where T : Control
     {
-        control.Margin = new Padding(indent, topGap, 0, 4);
+        control.Margin = new Padding(indent, topGap, 0, 8);
         _stack.Controls.Add(control);
         return control;
     }

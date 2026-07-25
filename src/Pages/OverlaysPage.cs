@@ -78,7 +78,7 @@ internal sealed class OverlaysPage : SettingsPage
             Text = "Add overlay",
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10, 4, 10, 4),
+            Padding = new Padding(16, 8, 16, 8),
             TabStop = false,
         };
         add.Click += (_, _) => OnAdd();

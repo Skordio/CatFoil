@@ -64,8 +64,11 @@ assigned to a control).
 
 **Sub-pages.** Besides the six nav entries the shell can show one page reached
 from *within* another — `ShowSubPage` / `PopSubPage`, one deep. The header row
-grows a back arrow and a breadcrumb ("Overlays › Cat badge") while the nav list
-keeps highlighting the parent. Escape goes back rather than closing; changing nav
+grows a back button and a breadcrumb ("Overlays › Cat badge") while the nav list
+keeps highlighting the parent. The back button is an owner-drawn dark rounded
+square with a white triangle (`BackButton`), not a text glyph: at header size a
+"‹" was both easy to miss and clipped by its own bounds, since a glyph gives no
+control over how much of the em box it fills. Escape goes back rather than closing; changing nav
 selection discards the sub-page; and clicking the *already-selected* nav row pops
 too, since that raises no `SelectedIndexChanged` and would otherwise strand the
 user. A sub-page is owned by the shell and disposed when it goes away — it is

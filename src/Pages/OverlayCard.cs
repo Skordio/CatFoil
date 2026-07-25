@@ -19,8 +19,8 @@ internal sealed class OverlayCard : Panel
     private static readonly Color SummaryColor = Color.FromArgb(110, 110, 110);
     private static readonly Color ThumbBack = Color.FromArgb(248, 248, 248);
 
-    public const int CardHeight = 78;
-    private const int ThumbSize = 48;
+    public const int CardHeight = 88;
+    private const int ThumbSize = 54;
 
     private readonly OverlayItem _item;
     private readonly Bitmap _defaultIcon;
@@ -106,16 +106,16 @@ internal sealed class OverlayCard : Panel
     {
         const int Gap = 6;
         int right = ClientSize.Width - 12;
-        int top = (CardHeight - 27) / 2;
+        int top = (CardHeight - 32) / 2;
 
-        more.Bounds = new Rectangle(right - 34, top, 34, 27);
-        edit.Bounds = new Rectangle(more.Left - Gap - 58, top, 58, 27);
-        _enabled.Bounds = new Rectangle(edit.Left - Gap - 88, top + 3, 88, 21);
+        more.Bounds = new Rectangle(right - 40, top, 40, 32);
+        edit.Bounds = new Rectangle(more.Left - Gap - 64, top, 64, 32);
+        _enabled.Bounds = new Rectangle(edit.Left - Gap - 92, top + 5, 92, 22);
 
         int textLeft = 12 + ThumbSize + 14;
         int textWidth = Math.Max(40, _enabled.Left - Gap - textLeft);
-        _name.Bounds = new Rectangle(textLeft, 16, textWidth, 22);
-        _summary.Bounds = new Rectangle(textLeft, 39, textWidth, 20);
+        _name.Bounds = new Rectangle(textLeft, 20, textWidth, 23);
+        _summary.Bounds = new Rectangle(textLeft, 46, textWidth, 20);
     }
 
     private static string Describe(OverlayItem item)

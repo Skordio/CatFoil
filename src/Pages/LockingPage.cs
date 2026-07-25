@@ -39,7 +39,12 @@ internal sealed class LockingPage : SettingsPage
 
         _txtHotkey.ReadOnly = true;
         _txtHotkey.Font = BodyFont;
-        _txtHotkey.Width = 190;
+        _txtHotkey.Width = 210;
+        // The click target for rebinding a hotkey; worth being comfortably
+        // larger than a default single-line box.
+        _txtHotkey.TextAlign = HorizontalAlignment.Center;
+        _txtHotkey.Padding = new Padding(0, 6, 0, 6);
+        _txtHotkey.MinimumSize = new Size(0, 30);
         _txtHotkey.KeyDown += OnHotkeyKeyDown;
         _txtHotkey.KeyUp += OnHotkeyKeyUp;
         // While the box has focus the app stops listening for the current
@@ -84,10 +89,13 @@ internal sealed class LockingPage : SettingsPage
         _numAutoLock.Minimum = 1;
         _numAutoLock.Maximum = 120;
         _numAutoLock.Font = BodyFont;
-        _numAutoLock.Width = 58;
+        _numAutoLock.Width = 70;
+        // Taller than the default: the up/down arrows are the smallest hit
+        // targets on any settings page.
+        _numAutoLock.MinimumSize = new Size(0, 28);
         _numAutoLock.Value = Math.Clamp(Settings.AutoLockMinutes, 1, 120);
         _numAutoLock.Enabled = _chkAutoLock.Checked;
-        _numAutoLock.Margin = new Padding(0, 1, 6, 0);
+        _numAutoLock.Margin = new Padding(0, 3, 8, 0);
         _numAutoLock.ValueChanged += (_, _) =>
             Session.Apply(s => s.AutoLockMinutes = (int)_numAutoLock.Value);
         _chkAutoLock.CheckedChanged += (_, _) =>

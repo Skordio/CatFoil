@@ -23,7 +23,7 @@ internal sealed class AboutPage : SettingsPage
             Text = "Welcome tour…",
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10, 4, 10, 4),
+            Padding = new Padding(16, 8, 16, 8),
             TabStop = false,
         };
         tour.Click += OnWelcomeTour;
