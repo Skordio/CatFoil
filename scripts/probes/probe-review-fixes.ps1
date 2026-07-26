@@ -23,7 +23,7 @@ $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $sT   = $asm.GetType('CatFoil.Settings')
 $fT   = $asm.GetType('CatFoil.SettingsForm')
 $oT   = $asm.GetType('CatFoil.OverlayForm')
-$stT  = $asm.GetType('CatFoil.OverlayStateSettings')
+$stT  = $asm.GetType('CatFoil.OverlayAppearance')
 $srcT = $asm.GetType('CatFoil.OverlayIconSource')
 $ifl  = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
 
@@ -62,15 +62,12 @@ $before = @($body.Controls)
 $countBefore = $before.Count
 Check 'editor body has controls to rebuild' ($countBefore -gt 8) "count=$countBefore"
 
-$fs = @($sub.Controls[0].Controls | ForEach-Object { $_ } |
-        Where-Object { $_.Text -eq 'When a fullscreen app is running' })
-if ($fs.Count -eq 0) {
-  $all = New-Object System.Collections.ArrayList
-  function Walk($c) { foreach ($k in $c.Controls) { [void]$all.Add($k); Walk $k } }
-  Walk $sub
-  $fs = @($all | Where-Object { $_.Text -eq 'When a fullscreen app is running' })
-}
-$fs[0].Checked = $true
+# Invoked directly rather than through a control. The only caller left is the
+# icon-colour picker, which opens a modal ColorDialog and would hang the probe —
+# and the assertion below is about the disposal loop itself, not about who
+# starts it. (The state selector that used to trigger this is gone: an overlay
+# has one appearance now, and a ShowIn dropdown that rebuilds nothing.)
+$fT.Assembly.GetType('CatFoil.OverlayEditorPage').GetMethod('BuildBody', $ifl).Invoke($sub, @())
 Pump 450
 
 $leaked = @($before | Where-Object { -not $_.IsDisposed })
@@ -78,7 +75,6 @@ Check 'every control from the old body was disposed' ($leaked.Count -eq 0) `
   ("$($leaked.Count) leaked: " + (($leaked | ForEach-Object { $_.GetType().Name }) -join ','))
 
 # --- Finding 8: the breadcrumb follows a rename ------------------------------
-$fs2 = @($sub.Controls[0].Controls | Where-Object { $_.Text -eq 'Normal' })
 $hdr = $fT.GetField('_header', $ifl).GetValue($form)
 $allc = New-Object System.Collections.ArrayList
 function Walk2($c) { foreach ($k in $c.Controls) { [void]$allc.Add($k); Walk2 $k } }
@@ -104,23 +100,23 @@ $opt = [System.Text.Json.JsonSerializerOptions]::new()
 $opt.Converters.Add([System.Text.Json.Serialization.JsonStringEnumConverter]::new())
 $s2 = [Activator]::CreateInstance($sT)
 $i2 = $s2.EnsureOverlays()[0]
-$i2.Normal.IconSource = [Enum]::Parse($srcT, 'Custom')
-$i2.Normal.CustomIconFile = 'icons\x-normal-abc123.png'
+$i2.Appearance.IconSource = [Enum]::Parse($srcT, 'Custom')
+$i2.Appearance.CustomIconFile = 'icons\x-abc123.png'
 $json = [System.Text.Json.JsonSerializer]::Serialize($s2, $sT, $opt)
 Check 'saved overlay carries IconSource, not UseCustomIcon' `
   (($json -match '"IconSource"') -and -not ($json -match '"UseCustomIcon"'))
 $reloaded = [System.Text.Json.JsonSerializer]::Deserialize($json, $sT, $opt)
 Check 'reload keeps Custom rather than forcing it' `
-  (($reloaded.EnsureOverlays()[0]).Normal.IconSource.ToString() -eq 'Custom')
+  (($reloaded.EnsureOverlays()[0]).Appearance.IconSource.ToString() -eq 'Custom')
 
 # --- Finding 6: automatic placement centres on the badge's real size ---------
 # The form is created at the default 64px, so placing before ApplyAppearance
 # centred a 200px badge as though it were 64.
 $big = [Activator]::CreateInstance($stT); $big.Size = 200
-$hidden = [Activator]::CreateInstance($stT); $hidden.Visible = $false
+$showIn = [Enum]::Parse($asm.GetType('CatFoil.OverlayShowIn'), 'ExceptFullscreen')
 $ov = [Activator]::CreateInstance($oT, @([System.Drawing.SystemIcons]::Application, 'probe-size'))
 try {
-  $ov.ApplyAppearance($big, $hidden)
+  $ov.ApplyAppearance($big, $showIn)
   Check 'appearance sizes a hidden badge' ($ov.ClientSize.Width -eq 200) $ov.ClientSize.Width
   $ov.ApplySavedPosition($null, 0)
   $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea

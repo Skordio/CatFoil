@@ -65,7 +65,7 @@ fails by handing back a null form, which looks like a pass.
 | `probe-behavior` | Immediate-apply: live announce, debounced write |
 | `probe-scroll` | A page scrolls once its content outgrows the window |
 | `probe-3a` | Overlay list, cards, sub-page navigation, default position |
-| `probe-3d` | Overlay editor: state selector, immediate apply, layout |
+| `probe-3d` | Overlay editor: show-in dropdown, immediate apply, layout |
 | `probe-glyphs` | Contact sheet of candidate gallery glyphs (visual, manual) |
 
 `probe-render` compares against `artifacts\probes\render\*.bin`. Capture a new

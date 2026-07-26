@@ -38,7 +38,7 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $rT  = $asm.GetType('CatFoil.OverlayRenderer')
-$stT = $asm.GetType('CatFoil.OverlayStateSettings')
+$stT = $asm.GetType('CatFoil.OverlayAppearance')
 
 $LegacyAlpha = $Scale
 

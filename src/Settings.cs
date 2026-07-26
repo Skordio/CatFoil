@@ -73,9 +73,9 @@ public sealed class Settings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Point? OverlayPosition { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public OverlayStateSettings? OverlayNormal { get; set; }
+    public OverlayAppearance? OverlayNormal { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public OverlayStateSettings? OverlayFullscreen { get; set; }
+    public OverlayAppearance? OverlayFullscreen { get; set; }
 
     // Lifetime usage statistics.
     public int StatLockSessions { get; set; }
@@ -148,8 +148,7 @@ public sealed class Settings
         var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (OverlayItem item in Overlays)
         {
-            item.Normal ??= new OverlayStateSettings();
-            item.Fullscreen ??= new OverlayStateSettings { Visible = false };
+            item.Appearance ??= new OverlayAppearance();
             // Ids name image files and match badges to items, so a missing or
             // repeated one would quietly break the second overlay.
             if (string.IsNullOrWhiteSpace(item.Id) || !seenIds.Add(item.Id))
@@ -161,11 +160,15 @@ public sealed class Settings
 
         if (Overlays.Count == 0)
         {
+            // Deliberately fed into the *legacy* per-state slots rather than
+            // straight into Appearance: that puts a 0.3 file into exactly the
+            // shape a 0.4 one already has, so the collapse below is the single
+            // place that knows how two states become one.
             Overlays.Add(new OverlayItem
             {
                 Position = OverlayPosition,
-                Normal = OverlayNormal ?? new OverlayStateSettings(),
-                Fullscreen = OverlayFullscreen ?? new OverlayStateSettings { Visible = false },
+                Normal = OverlayNormal,
+                Fullscreen = OverlayFullscreen,
             });
         }
 
@@ -174,20 +177,62 @@ public sealed class Settings
         OverlayNormal = null;
         OverlayFullscreen = null;
 
-        // Per-state migration has to run here, after the fold above, not in the
+        // Both migrations have to run here, after the fold above, not in the
         // loop before it: on a 0.3 file the states exist only as OverlayNormal /
         // OverlayFullscreen until that fold, so migrating earlier would skip
         // precisely the users the legacy properties exist to protect.
         foreach (OverlayItem item in Overlays)
         {
-            MigrateState(item.Normal);
-            MigrateState(item.Fullscreen);
+            CollapseStates(item);
+            MigrateState(item.Appearance);
         }
 
         return Overlays;
     }
 
-    private static void MigrateState(OverlayStateSettings state)
+    /// <summary>
+    /// Folds the two per-state appearances 0.4.0 and earlier carried into one
+    /// <see cref="OverlayItem.Appearance"/> plus an <see cref="OverlayShowIn"/>.
+    /// Lossy by design — a badge that looked different over fullscreen apps
+    /// keeps only one of the two looks — so the rules below are chosen to
+    /// preserve what was actually on screen.
+    /// </summary>
+    private static void CollapseStates(OverlayItem item)
+    {
+        // Keyed strictly on a legacy block still being present. Without this an
+        // already-collapsed file would have its Appearance replaced by a
+        // default every time this ran, and EnsureOverlays runs on every load.
+        if (item.Normal is null && item.Fullscreen is null) return;
+
+        // A hand-edited file can be missing either block; fall back to what the
+        // defaults used to be rather than to the nullable's own default.
+        bool showedNormally = item.Normal?.Visible ?? true;
+        bool showedInFullscreen = item.Fullscreen?.Visible ?? false;
+
+        if (showedNormally && showedInFullscreen) item.ShowIn = OverlayShowIn.Always;
+        else if (showedInFullscreen) item.ShowIn = OverlayShowIn.OnlyFullscreen;
+        else item.ShowIn = OverlayShowIn.ExceptFullscreen;
+
+        // The surviving look is the one the user was actually seeing. For a
+        // badge that only appeared over fullscreen apps that is the Fullscreen
+        // block — taking Normal there would silently restyle a badge whose
+        // Normal appearance had never been on screen to be judged.
+        item.Appearance = (showedInFullscreen && !showedNormally
+            ? item.Fullscreen ?? item.Normal
+            : item.Normal ?? item.Fullscreen) ?? new OverlayAppearance();
+
+        // Neither state visible means the badge showed nothing at all, and
+        // ShowIn can no longer express that. Enabled can, and unlike a silently
+        // dropped setting it is visible in the list and one click to undo.
+        if (!showedNormally && !showedInFullscreen) item.Enabled = false;
+
+        // Absorbed — drop them so Save() stops writing them.
+        item.Normal = null;
+        item.Fullscreen = null;
+        item.Appearance.Visible = null;
+    }
+
+    private static void MigrateState(OverlayAppearance state)
     {
         // Keyed strictly on the legacy property still being present — never on
         // the new one "looking like a default". EnsureOverlays is idempotent and
@@ -220,7 +265,7 @@ public sealed class Settings
 
 /// <summary>
 /// One on-screen badge: its identity, whether it is shown at all, where it
-/// sits, and how it looks in each system state. A list of these replaces the
+/// sits, when it appears, and how it looks. A list of these replaces the
 /// single overlay 0.3 and earlier had, so several badges can be on screen at
 /// once. <see cref="Id"/> is stable for the item's lifetime and names its
 /// custom image files on disk, so it must never be reused after a delete.
@@ -234,26 +279,40 @@ public sealed class OverlayItem
     /// <summary>Where the user dragged it, or null to place it automatically.</summary>
     public Point? Position { get; set; }
 
-    // Defaults reproduce the original behavior: the badge shows normally and
-    // hides over fullscreen apps.
-    public OverlayStateSettings Normal { get; set; } = new();
-    public OverlayStateSettings Fullscreen { get; set; } = new() { Visible = false };
+    /// <summary>Which system states the badge appears in.</summary>
+    [JsonConverter(typeof(LenientEnumConverter<OverlayShowIn>))]
+    public OverlayShowIn ShowIn { get; set; } = OverlayShowIn.ExceptFullscreen;
+
+    /// <summary>How the badge looks, in every state it appears in.</summary>
+    public OverlayAppearance Appearance { get; set; } = new();
+
+    // --- Legacy (0.4.0 and earlier) -----------------------------------------
+    // The badge used to carry two complete appearances, one per system state,
+    // each with its own Visible flag. Read once, collapsed into Appearance +
+    // ShowIn by Settings.EnsureOverlays, then nulled so they are never written
+    // again.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OverlayAppearance? Normal { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OverlayAppearance? Fullscreen { get; set; }
 }
 
 /// <summary>
-/// How the locked overlay looks in one system state (normal vs. a fullscreen
-/// app being foreground). A custom icon is a file kept inside
+/// How the locked overlay looks. A custom icon is a file kept inside
 /// <see cref="Settings.Directory"/> so it survives the original being moved;
 /// <see cref="CustomIconFile"/> is the path relative to that folder.
+///
+/// One of these per badge, not one per system state: when the badge appears is
+/// <see cref="OverlayItem.ShowIn"/>'s job, and a separate look for fullscreen
+/// apps cost a duplicate of every control here to express something nobody
+/// asked for.
 /// </summary>
-public sealed class OverlayStateSettings
+public sealed class OverlayAppearance
 {
     public const int MinSize = 32;
     public const int MaxSize = 256;
 
     public const int MinOpacity = 10;
-
-    public bool Visible { get; set; } = true;
 
     /// <summary>Where the badge's picture comes from.</summary>
     [JsonConverter(typeof(LenientEnumConverter<OverlayIconSource>))]
@@ -299,6 +358,14 @@ public sealed class OverlayStateSettings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? UseCustomIcon { get; set; }
 
+    /// <summary>
+    /// Legacy: whether the badge showed in the one state this object used to
+    /// describe. Superseded by <see cref="OverlayItem.ShowIn"/>, but still read,
+    /// because the pair of them is the only record of when the badge appeared.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Visible { get; set; }
+
     // settings.json is text a user can edit, so nothing here can be trusted to
     // be in range.
     public int ClampedSize() => Math.Clamp(Size, MinSize, MaxSize);
@@ -320,7 +387,18 @@ public sealed class OverlayStateSettings
     /// immutable string, and the class is sealed, so a shallow copy is a
     /// complete one.
     /// </summary>
-    public OverlayStateSettings Clone() => (OverlayStateSettings)MemberwiseClone();
+    public OverlayAppearance Clone() => (OverlayAppearance)MemberwiseClone();
+}
+
+/// <summary>Which system states a badge appears in.</summary>
+public enum OverlayShowIn
+{
+    // Zero value on purpose: this is what every badge did before the setting
+    // existed, so an unreadable value lands on the familiar behaviour rather
+    // than on something the user never chose.
+    ExceptFullscreen,
+    OnlyFullscreen,
+    Always,
 }
 
 /// <summary>Where a cue's audio comes from.</summary>
@@ -349,7 +427,7 @@ public sealed class SoundSetting
 
     public int ClampedVolume() => Math.Clamp(Volume, 0, 100);
 
-    /// <summary>See <see cref="OverlayStateSettings.Clone"/> for why this is
+    /// <summary>See <see cref="OverlayAppearance.Clone"/> for why this is
     /// memberwise rather than a hand-written field list.</summary>
     public SoundSetting Clone() => (SoundSetting)MemberwiseClone();
 }

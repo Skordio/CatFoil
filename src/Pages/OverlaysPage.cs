@@ -124,17 +124,16 @@ internal sealed class OverlaysPage : SettingsPage
         {
             Name = source.Name + " (copy)",
             Enabled = source.Enabled,
-            Normal = source.Normal.Clone(),
-            Fullscreen = source.Fullscreen.Clone(),
+            ShowIn = source.ShowIn,
+            Appearance = source.Appearance.Clone(),
             // Position deliberately left null so the copy cascades to its own
             // spot instead of landing exactly on top of the original.
         };
 
-        // Give the copy its own image files. Sharing the original's relative
+        // Give the copy its own image file. Sharing the original's relative
         // path would survive today's sweep, but it makes one overlay's edits
         // silently change another's appearance.
-        copy.Normal.CustomIconFile = IconStore.Duplicate(source.Normal.CustomIconFile, copy.Id, "normal");
-        copy.Fullscreen.CustomIconFile = IconStore.Duplicate(source.Fullscreen.CustomIconFile, copy.Id, "fullscreen");
+        copy.Appearance.CustomIconFile = IconStore.Duplicate(source.Appearance.CustomIconFile, copy.Id);
 
         Session.Apply(s => s.Overlays.Add(copy));
         RebuildLater();

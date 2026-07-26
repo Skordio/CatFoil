@@ -7,9 +7,7 @@ namespace CatFoil;
 
 /// <summary>
 /// The appearance editor for one overlay, shown as a sub-page of the settings
-/// shell. Only one of the two states is on screen at a time — a selector says
-/// which is being edited — so both keep the full set of controls without the
-/// page growing to twice the length.
+/// shell: what the badge looks like, plus a dropdown for when it appears.
 /// </summary>
 internal sealed class OverlayEditorPage : SettingsPage
 {
@@ -23,7 +21,6 @@ internal sealed class OverlayEditorPage : SettingsPage
     private Bitmap? _defaultIcon;
     private Bitmap? _previewIcon;
     private PreviewBox? _preview;
-    private bool _editingFullscreen;
 
     // Drives the preview's blocked-key demonstration. Without it the two
     // settings that only apply while blocking would have nothing to preview.
@@ -39,7 +36,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         _flash.Tick += (_, _) => { _flashTicks++; RefreshPreview(); };
     }
 
-    private OverlayStateSettings State => _editingFullscreen ? _item.Fullscreen : _item.Normal;
+    private OverlayAppearance State => _item.Appearance;
 
     protected override void OnLoad(EventArgs e)
     {
@@ -65,44 +62,48 @@ internal sealed class OverlayEditorPage : SettingsPage
         };
         AddRow(name);
 
-        AddSection("Editing");
-        var normal = new RadioButton { Text = "Normal", AutoSize = true, Checked = true, Font = BodyFont };
-        var fullscreen = new RadioButton
+        AddSection("Show");
+        var showIn = new ComboBox
         {
-            Text = "When a fullscreen app is running",
-            AutoSize = true,
-            Margin = new Padding(18, 0, 0, 0),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 280,
             Font = BodyFont,
         };
-        normal.CheckedChanged += (_, _) =>
+        showIn.Items.AddRange(new object[]
         {
-            if (!normal.Checked) return;
-            _editingFullscreen = false;
-            BuildBody();
-        };
-        fullscreen.CheckedChanged += (_, _) =>
+            "Except in fullscreen apps",
+            "Only in fullscreen apps",
+            "Always",
+        });
+        showIn.SelectedIndex = _item.ShowIn switch
         {
-            if (!fullscreen.Checked) return;
-            _editingFullscreen = true;
-            BuildBody();
+            OverlayShowIn.OnlyFullscreen => 1,
+            OverlayShowIn.Always => 2,
+            _ => 0,
         };
-        AddRow(Row(normal, fullscreen));
-        AddHint("Each state has its own look.");
+        showIn.SelectedIndexChanged += (_, _) => Session.Apply(_ => _item.ShowIn = showIn.SelectedIndex switch
+        {
+            1 => OverlayShowIn.OnlyFullscreen,
+            2 => OverlayShowIn.Always,
+            _ => OverlayShowIn.ExceptFullscreen,
+        });
+        AddRow(showIn);
+        AddHint("A fullscreen app is one filling the whole screen — a game, or a video played full-screen.");
 
         _body.Size = new Size(BodyWidth + 24 + PreviewSize, BodyHeight);
         AddRow(_body, topGap: 10);
     }
 
-    // Rebuilt outright when the edited state changes: every control's value
-    // comes from the model, so rebinding a live control tree would be more code
-    // and more ways to fire a change handler while doing it.
+    // Rebuilt outright rather than rebound when the icon colour changes: every
+    // control's value comes from the model, so rebinding a live control tree
+    // would be more code and more ways to fire a change handler while doing it.
     private void BuildBody()
     {
         _body.SuspendLayout();
         // Backwards, because Dispose() removes the control from this very
         // collection and the enumerator is index-based: a foreach would skip
         // every other child, and the Clear() that followed would then unparent
-        // the survivors without disposing them. This runs on every state switch.
+        // the survivors without disposing them.
         for (int i = _body.Controls.Count - 1; i >= 0; i--)
         {
             Control gone = _body.Controls[i];
@@ -110,20 +111,8 @@ internal sealed class OverlayEditorPage : SettingsPage
             gone.Dispose();
         }
 
-        OverlayStateSettings s = State;
+        OverlayAppearance s = State;
         int y = 0;
-
-        var show = new CheckBox
-        {
-            Text = _editingFullscreen ? "Show the badge while a fullscreen app is running" : "Show the badge in this state",
-            AutoSize = true,
-            Checked = s.Visible,
-            Font = BodyFont,
-            Location = new Point(0, y),
-        };
-        show.CheckedChanged += (_, _) => Edit(x => x.Visible = show.Checked);
-        _body.Controls.Add(show);
-        y += 40;
 
         y = Section("Icon", y);
         var useDefault = new RadioButton
@@ -222,9 +211,9 @@ internal sealed class OverlayEditorPage : SettingsPage
         }
 
         y = Section("Appearance", y);
-        y = Slider(y, "Size", OverlayStateSettings.MinSize, OverlayStateSettings.MaxSize,
+        y = Slider(y, "Size", OverlayAppearance.MinSize, OverlayAppearance.MaxSize,
                    s.ClampedSize(), " px", v => Edit(x => x.Size = v));
-        y = Slider(y, "Opacity", OverlayStateSettings.MinOpacity, 100,
+        y = Slider(y, "Opacity", OverlayAppearance.MinOpacity, 100,
                    s.ClampedOpacity(), " %", v => Edit(x => x.Opacity = v));
 
         var blocked = new CheckBox
@@ -236,8 +225,8 @@ internal sealed class OverlayEditorPage : SettingsPage
         _body.Controls.Add(blocked);
         y += 38;
 
-        y = Slider(y, "When blocking", OverlayStateSettings.MinOpacity, 100,
-                   Math.Clamp(s.BlockedOpacity, OverlayStateSettings.MinOpacity, 100), " %",
+        y = Slider(y, "When blocking", OverlayAppearance.MinOpacity, 100,
+                   Math.Clamp(s.BlockedOpacity, OverlayAppearance.MinOpacity, 100), " %",
                    v => Edit(x => x.BlockedOpacity = v), indent: 18, out Control[] blockedRow);
         foreach (Control c in blockedRow) c.Enabled = s.BlockedOpacityEnabled;
         blocked.CheckedChanged += (_, _) =>
@@ -312,7 +301,7 @@ internal sealed class OverlayEditorPage : SettingsPage
 
     // The picker: one small button per built-in icon, drawn with the glyph
     // itself so the choice is made by recognising it rather than reading a name.
-    private FlowLayoutPanel BuildGalleryStrip(OverlayStateSettings s, Point location)
+    private FlowLayoutPanel BuildGalleryStrip(OverlayAppearance s, Point location)
     {
         var strip = new FlowLayoutPanel
         {
@@ -478,16 +467,15 @@ internal sealed class OverlayEditorPage : SettingsPage
         return y + 52;
     }
 
-    // Applies an edit to whichever state is being edited. The state object is
-    // replaced rather than mutated, so the overlay window's reference-based
-    // repaint check sees the change.
-    private void Edit(Action<OverlayStateSettings> change)
+    // The appearance object is replaced rather than mutated, so the overlay
+    // window's reference-based repaint check sees the change.
+    private void Edit(Action<OverlayAppearance> change)
     {
         Session.Apply(_ =>
         {
-            OverlayStateSettings next = State.Clone();
+            OverlayAppearance next = State.Clone();
             change(next);
-            if (_editingFullscreen) _item.Fullscreen = next; else _item.Normal = next;
+            _item.Appearance = next;
         });
         RefreshPreview();
     }
@@ -503,11 +491,19 @@ internal sealed class OverlayEditorPage : SettingsPage
 
         try
         {
-            string stored = IconStore.Import(dlg.FileName, _item.Id, _editingFullscreen ? "fullscreen" : "normal");
+            string stored = IconStore.Import(dlg.FileName, _item.Id);
             Edit(x => { x.IconSource = OverlayIconSource.Custom; x.CustomIconFile = stored; });
             file.Text = Path.GetFileName(dlg.FileName);
             LoadPreviewIcon();
             RefreshPreview();
+        }
+        catch (UnusableImageException ex)
+        {
+            // The picture is the problem rather than the copy, and the message
+            // already says what to do about it — so show it on its own and
+            // leave the previous choice in place.
+            MessageBox.Show(this, ex.Message,
+                "Overlay image", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or NotSupportedException or ArgumentException)
@@ -566,14 +562,14 @@ internal sealed class OverlayEditorPage : SettingsPage
         private static readonly SolidBrush DarkCell = new(Color.FromArgb(210, 210, 210));
         private static readonly Pen BorderPen = new(Color.FromArgb(180, 180, 180));
 
-        private OverlayStateSettings _state = new();
+        private OverlayAppearance _state = new();
         private Bitmap? _icon;
         private bool _flashOn;
         private bool _blocked;
 
         public PreviewBox() { DoubleBuffered = true; }
 
-        public void Show(OverlayStateSettings state, Bitmap icon, bool flashOn, bool blocked)
+        public void Show(OverlayAppearance state, Bitmap icon, bool flashOn, bool blocked)
         {
             _state = state;
             _icon = icon;
@@ -597,7 +593,9 @@ internal sealed class OverlayEditorPage : SettingsPage
                         g.FillRectangle(DarkCell, x, y, cell, cell);
             g.DrawRectangle(BorderPen, 0, 0, Width - 1, Height - 1);
 
-            if (_icon is null || !_state.Visible) return;
+            // Drawn regardless of when the badge appears: this shows what it
+            // looks like, and the dropdown above says when you'll see it.
+            if (_icon is null) return;
 
             int side = Math.Min(_state.ClampedSize(), Math.Min(Width, Height) - 8);
             var bounds = new Rectangle((Width - side) / 2, (Height - side) / 2, side, side);

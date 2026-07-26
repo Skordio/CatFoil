@@ -309,7 +309,7 @@ public sealed class TrayAppContext : ApplicationContext
             bool created = form is null;
             form ??= CreateOverlay(item);
 
-            form.ApplyAppearance(item.Normal, item.Fullscreen);
+            form.ApplyAppearance(item.Appearance, item.ShowIn);
             // Positioned only after the appearance is on, and only for a badge
             // that is new: automatic placement centres on the badge's size, and
             // before ApplyAppearance that is still the constructor's default 64

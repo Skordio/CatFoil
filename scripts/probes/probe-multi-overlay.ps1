@@ -28,7 +28,7 @@ Add-Type -AssemblyName System.Drawing
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $oT  = $asm.GetType('CatFoil.OverlayForm')
-$stT = $asm.GetType('CatFoil.OverlayStateSettings')
+$stT = $asm.GetType('CatFoil.OverlayAppearance')
 
 $fails = 0
 function Check($name, $cond, $detail = '') {
@@ -39,18 +39,21 @@ function Pump { param($ms = 300)
   $end = (Get-Date).AddMilliseconds($ms)
   while ((Get-Date) -lt $end) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 15 }
 }
-function NewState($size, $visible) {
-  $s = [Activator]::CreateInstance($stT); $s.Size = $size; $s.Visible = $visible; $s
+function NewState($size) {
+  $s = [Activator]::CreateInstance($stT); $s.Size = $size; $s
 }
 
 $icon = [System.Drawing.SystemIcons]::Application
-$hidden = NewState 64 $false
+# Nothing here goes fullscreen, so every badge is told to show regardless —
+# this probe is about identity, cascade and independence, not about when a
+# badge appears (probe-overlay-model covers that).
+$always = [Enum]::Parse($asm.GetType('CatFoil.OverlayShowIn'), 'Always')
 
 $a = [Activator]::CreateInstance($oT, @($icon, 'overlay-a'))
 $b = [Activator]::CreateInstance($oT, @($icon, 'overlay-b'))
 try {
-  $a.ApplyAppearance((NewState 64 $true), $hidden)
-  $b.ApplyAppearance((NewState 128 $true), $hidden)
+  $a.ApplyAppearance((NewState 64), $always)
+  $b.ApplyAppearance((NewState 128), $always)
 
   # Neither has ever been dragged, so both fall back to the automatic spot.
   $a.ApplySavedPosition($null, 0)
@@ -65,8 +68,8 @@ try {
   $s1 = [Activator]::CreateInstance($oT, @($icon, 'step-1'))
   $s2 = [Activator]::CreateInstance($oT, @($icon, 'step-2'))
   try {
-    $s1.ApplyAppearance((NewState 64 $true), $hidden); $s1.ApplySavedPosition($null, 0)
-    $s2.ApplyAppearance((NewState 64 $true), $hidden); $s2.ApplySavedPosition($null, 1)
+    $s1.ApplyAppearance((NewState 64), $always); $s1.ApplySavedPosition($null, 0)
+    $s2.ApplyAppearance((NewState 64), $always); $s2.ApplySavedPosition($null, 1)
     Check 'same-size badges step by 88px' (($s2.Location.Y - $s1.Location.Y) -eq 88) "delta=$($s2.Location.Y - $s1.Location.Y)"
   } finally { $s1.Dispose(); $s2.Dispose() }
 
@@ -79,7 +82,7 @@ try {
   # A remembered position must win over the cascade.
   $c = [Activator]::CreateInstance($oT, @($icon, 'overlay-c'))
   try {
-    $c.ApplyAppearance((NewState 64 $true), $hidden)
+    $c.ApplyAppearance((NewState 64), $always)
     $c.ApplySavedPosition([System.Drawing.Point]::new(300, 400), 5)
     Check 'saved position beats cascade' ($c.Location.X -eq 300 -and $c.Location.Y -eq 400) $c.Location
   } finally { $c.Dispose() }

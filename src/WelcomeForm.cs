@@ -57,7 +57,7 @@ public sealed class WelcomeForm : Form
         AddHeader(flow, "The cat badge");
         AddBody(flow,
             "While locked, a small cat badge floats on your screen as a reminder. Drag it " +
-            "anywhere you like; click it to open CatFoil. It hides itself during fullscreen apps.");
+            "anywhere you like; click it to open CatFoil. By default it hides itself during fullscreen apps.");
 
         AddHeader(flow, "The tray icon");
         AddBody(flow,

@@ -63,9 +63,9 @@ foreach ($n in 'Desk cat','Second screen') {
   $it = [Activator]::CreateInstance($itT); $it.Name = $n; $list.Add($it)
 }
 $list[0].Name = 'Overlay'
-$list[1].Normal.Size = 128
+$list[1].Appearance.Size = 128
 $list[2].Enabled = $false
-$list[2].Fullscreen.Visible = $true
+$list[2].ShowIn = [Enum]::Parse($asm.GetType('CatFoil.OverlayShowIn'), 'OnlyFullscreen')
 
 $form = [Activator]::CreateInstance($fT, @($settings))
 $form.Icon = [System.Drawing.SystemIcons]::Application

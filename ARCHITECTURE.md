@@ -129,15 +129,12 @@ balloons.
 A **sub-page** (§2.2) of the settings shell, opened from an overlay card's
 **Edit** button. Immediate-apply like every other page — there is no OK/Cancel.
 
-At the top: the overlay's **Name**, and an **Editing** selector choosing which
-state the editor below is bound to (Normal · When a fullscreen app is running).
-Only one state is on screen at a time, so both keep the full set of controls
-without the page growing to twice the length. Switching states rebuilds the body
-outright rather than rebinding a live control tree — every value comes from the
-model anyway, and rebinding is more code and more ways to fire a change handler
-while doing it.
+At the top: the overlay's **Name**, and a **Show** dropdown saying when the badge
+appears — *Except in fullscreen apps* (the default) · *Only in fullscreen apps* ·
+*Always*. It writes `OverlayItem.ShowIn` and nothing below it depends on the
+value, so it deliberately does **not** rebuild the body.
 
-The body: show-in-this-state · an icon source (Default cat / **Built-in icon**
+The body: an icon source (Default cat / **Built-in icon**
 with a glyph picker and colour / Custom image + **Choose…**) · sliders
 for size (32–256 px), opacity, an optional different opacity while blocking, and
 the blocked ring · background shape and colour (`ColorDialog`, in the box) · and
@@ -147,8 +144,10 @@ the blocked state — without it, the two settings that only apply while blockin
 would have nothing to preview. The body sizes itself to what was laid out rather
 than to a constant, so adding a row can't quietly clip the last one.
 
-Each edit replaces the state object instead of mutating it, because the overlay
-window's repaint check compares state by reference (§2.5).
+Each edit replaces the appearance object instead of mutating it, because the
+overlay window's repaint check compares it by reference (§2.5). The body is
+still rebuilt outright — rather than rebound — when the icon colour changes,
+since every gallery swatch is drawn in the chosen colour and has to be redrawn.
 
 ### 2.4 Welcome window — `src/WelcomeForm.cs`
 Shown once on first launch (flag `Settings.WelcomeShown`), and re-openable from
@@ -175,10 +174,11 @@ one. Resolving which image to show is shared with the settings preview and the
 overlay list through `src/OverlayIcon.cs`.
 
 Features:
-- **Per-state appearance**: a 1-second poll picks Normal vs Fullscreen state via
-  `ForegroundIsFullscreen()` and shows / hides / resizes accordingly. Re-compositing
-  the layered window is skipped unless the resolved icon, size, countdown, or flash
-  actually changed since the last paint, so the poll is nearly free while nothing moves.
+- **When it shows**: a 1-second poll compares `ForegroundIsFullscreen()` against the
+  item's `ShowIn` and shows or hides accordingly. The badge has one appearance, so
+  this decides visibility only. Re-compositing the layered window is skipped unless
+  the resolved icon, size, countdown, or flash actually changed since the last paint,
+  so the poll is nearly free while nothing moves.
 - **Draggable** (position saved, clamped to the virtual screen); a **click**
   (no drag) opens the main window.
 - **Countdown text** during a timed lock (GDI+ `DrawString` so glyphs carry
@@ -257,14 +257,20 @@ a truncated one.
 ### 5.1 Overlays — `Settings.Overlays`
 
 A **list of `OverlayItem`**, so several badges can be on screen at once. Each item
-has a stable `Id` (a GUID, which also names its image files on disk and must never
+has a stable `Id` (a GUID, which also names its image file on disk and must never
 be reused after a delete), a `Name`, an `Enabled` switch, an optional `Position`,
-and the two per-state `OverlayStateSettings` (`Normal` / `Fullscreen`):
-Visible · `IconSource` (Default / Gallery / Custom) + `GalleryIconId` +
+a `ShowIn` (`ExceptFullscreen` / `OnlyFullscreen` / `Always`) saying when the badge
+appears, and one `OverlayAppearance` saying how it looks:
+`IconSource` (Default / Gallery / Custom) + `GalleryIconId` +
 `IconColor` + `CustomIconFile` · Size 32–256 · `Shape`
 (RoundedSquare / Square / Circle / None) · `BackgroundColor` (`#RRGGBB`) ·
 `Opacity` · `BlockedOpacityEnabled` + `BlockedOpacity` · `RingOpacity`.
 `ShowOverlay` remains a single master switch over all of them.
+
+**When** and **how** are deliberately separate. Up to 0.4.0 they were one setting —
+two complete appearances, `Normal` and `Fullscreen`, each with its own `Visible` —
+which cost a duplicate of every control above to express a look over fullscreen
+apps that nobody wanted.
 
 Everything is range-checked on read (`ClampedSize`, `ClampedOpacity`,
 `ClampedRingOpacity`) because settings.json is text a user can edit. Colours are
@@ -291,15 +297,38 @@ fresh install, where all three are simply absent. `EnsureOverlays()` is idempote
 and guarantees a non-empty list, so any caller needing "the overlays" can just call
 it. (One-way: a settings.json written by 0.4 has no overlay for 0.3 to read.)
 
+**Collapsing the two states.** 0.4.0 and earlier gave each item a `Normal` and a
+`Fullscreen` appearance. Both are still read — write-suppressed the same way — and
+`CollapseStates()` folds them into one `Appearance` plus a `ShowIn`. The 0.3 fold
+above feeds *into* those same legacy slots rather than straight into `Appearance`,
+so one routine handles both upgrade paths. The rules are chosen to preserve what
+was actually on screen:
+
+| Was visible | → `ShowIn` | → `Appearance` |
+|---|---|---|
+| both | `Always` | `Normal` |
+| normal only | `ExceptFullscreen` | `Normal` |
+| fullscreen only | `OnlyFullscreen` | **`Fullscreen`** |
+| neither | `ExceptFullscreen`, and `Enabled` cleared | `Normal` |
+
+The fullscreen-only row takes the *fullscreen* look because that is the one the
+user was looking at; taking `Normal` would silently restyle a badge whose normal
+appearance had never been on screen. The last row can't be said with `ShowIn` at
+all, so it moves to `Enabled` — which, unlike a dropped setting, is visible in the
+list and one click to undo. Any image the discarded state owned stops being
+referenced and is swept by `IconStore.CollectGarbage` (§5.3).
+
 Two per-state properties were likewise superseded: `ShowBackground` by `Shape`,
 and `UseCustomIcon` by `IconSource`. Two things about those migrations are
-load-bearing. They run in their own loop **after**
-the legacy fold, not in the per-item loop before it — on a 0.3 file the states
-exist only as `OverlayNormal`/`OverlayFullscreen` until that fold, so migrating
-earlier would skip exactly the users the legacy properties protect. And it is
+load-bearing. They run in their own loop **after** the legacy fold and the
+collapse, not in the per-item loop before them — on a 0.3 file the states exist
+only as `OverlayNormal`/`OverlayFullscreen` until that fold, so migrating earlier
+would skip exactly the users the legacy properties protect. And it is
 keyed strictly on `ShowBackground.HasValue`, never on `Shape` "looking like a
 default": `EnsureOverlays` is called from several places, so deriving from the
-current value would turn a deliberately chosen `None` back into a box.
+current value would turn a deliberately chosen `None` back into a box. The
+collapse is keyed the same way, on a legacy block being present rather than on
+`ShowIn` looking default, for exactly the same reason.
 
 ### 5.2 Built-in icons — `src/IconGallery.cs`
 
@@ -329,11 +358,11 @@ Four things about it are load-bearing:
 
 ### 5.3 Custom overlay images — `src/IconStore.cs`
 
-A chosen image is **copied** into `%APPDATA%\CatFoil\icons\{overlayId}-{normal|fullscreen}.{ext}`
+A chosen image is **copied** into `%APPDATA%\CatFoil\icons\{overlayId}-{token}.{ext}`
 so the badge survives the original being moved or deleted; settings store only the
 path **relative to** `Settings.Directory`, which keeps the portable EXE portable.
-Every import lands under a **fresh** name (`{id}-{state}-{token}.{ext}`). Reusing
-one fixed name per state would mean choosing a different picture leaves the
+Every import lands under a **fresh** name. Reusing
+one fixed name per overlay would mean choosing a different picture leaves the
 stored path unchanged, so nothing downstream could tell the image needs
 re-reading — and `OverlayForm.ApplyAppearance` deliberately reloads only when
 that path changes, since it runs on every settings edit and would otherwise read
@@ -395,8 +424,9 @@ closes.
 - Keyboard lock/unlock (mouse stays live); Ctrl+Alt+Del escape hatch.
 - Three ways to toggle: main-window button, tray menu, global hotkey.
 - Classic single-combo hotkey **or** opt-in multi-key chord.
-- Draggable, per-state (normal vs fullscreen) customizable overlay badge with
-  custom icons, size, and background — with live previews.
+- Draggable, customizable overlay badges with custom icons, size, and background
+  — with live previews — each shown except in, only in, or regardless of
+  fullscreen apps.
 - First-run welcome tour, re-openable from settings.
 - Start-with-Windows, start-minimized, close-to-tray options.
 - Free and unrestricted: no license, no trial, no limit on how long a lock lasts.

@@ -88,7 +88,7 @@ Check 'Edit opens a sub-page' ($null -ne $sub)
 Check 'sub-page is the overlay editor' ($sub.GetType().Name -eq 'OverlayEditorPage') $sub.GetType().Name
 $hdr = $fT.GetField('_header', $flags).GetValue($form)
 Check 'breadcrumb names the overlay' ($hdr.Text -like '*Desk cat*') $hdr.Text
-Shot $form '3d-editor-normal.png'
+Shot $form '3d-editor.png'
 
 $ctrls = AllControls $sub
 function ByText($t) { @($ctrls | Where-Object { $_.Text -eq $t })[0] }
@@ -96,8 +96,15 @@ function ByText($t) { @($ctrls | Where-Object { $_.Text -eq $t })[0] }
 # --- the editor is present and bound ---------------------------------------
 $tracks = @($ctrls | Where-Object { $_.GetType().Name -eq 'TrackBar' })
 Check 'four sliders (size, opacity, blocked, ring)' ($tracks.Count -eq 4) "count=$($tracks.Count)"
-$combo = @($ctrls | Where-Object { $_.GetType().Name -eq 'ComboBox' })[0]
+# Two dropdowns on this page now, so pick them by content rather than by
+# position — the ShowIn one lives in the chrome and enumerates first.
+$combos = @($ctrls | Where-Object { $_.GetType().Name -eq 'ComboBox' })
+Check 'two dropdowns: show-in and shape' ($combos.Count -eq 2) "count=$($combos.Count)"
+$combo = @($combos | Where-Object { $_.Items -contains 'Rounded square' })[0]
+$showIn = @($combos | Where-Object { $_.Items -contains 'Always' })[0]
 Check 'shape picker present with 4 shapes' ($null -ne $combo -and $combo.Items.Count -eq 4)
+Check 'show-in picker present with 3 choices' ($null -ne $showIn -and $showIn.Items.Count -eq 3)
+Check 'show-in defaults to except-in-fullscreen' ($showIn.SelectedIndex -eq 0) $showIn.SelectedIndex
 $preview = @($ctrls | Where-Object { $_.GetType().Name -eq 'PreviewBox' })[0]
 Check 'preview present' ($null -ne $preview)
 Check 'preview is inside the page bounds' `
@@ -121,50 +128,50 @@ Pump 400
 
 # --- immediate apply --------------------------------------------------------
 $size = $tracks[0]
-$before = $item.Normal.Size
+$before = $item.Appearance.Size
 $size.Value = 128
 $size.GetType().GetMethod('OnScroll', $flags).Invoke($size, @([EventArgs]::Empty))
 Pump 150
-Check 'size slider applies immediately' ($item.Normal.Size -eq 128) "was $before now $($item.Normal.Size)"
+Check 'size slider applies immediately' ($item.Appearance.Size -eq 128) "was $before now $($item.Appearance.Size)"
 Check 'state object replaced, not mutated in place' ($true)   # covered by the render cache test below
 
 $opacity = $tracks[1]
 $opacity.Value = 45
 $opacity.GetType().GetMethod('OnScroll', $flags).Invoke($opacity, @([EventArgs]::Empty))
 Pump 150
-Check 'opacity slider applies immediately' ($item.Normal.Opacity -eq 45) $item.Normal.Opacity
+Check 'opacity slider applies immediately' ($item.Appearance.Opacity -eq 45) $item.Appearance.Opacity
 
 $combo.SelectedIndex = 2     # Circle
 Pump 150
-Check 'shape picker applies immediately' ($item.Normal.Shape.ToString() -eq 'Circle') $item.Normal.Shape
+Check 'shape picker applies immediately' ($item.Appearance.Shape.ToString() -eq 'Circle') $item.Appearance.Shape
 
 $blocked = ByText 'Different opacity while blocking a key'
 Check 'blocked-opacity toggle present' ($null -ne $blocked)
 Check 'blocked slider disabled until enabled' (-not $tracks[2].Enabled)
 $blocked.Checked = $true
 Pump 150
-Check 'blocked toggle applies' ($item.Normal.BlockedOpacityEnabled -eq $true)
+Check 'blocked toggle applies' ($item.Appearance.BlockedOpacityEnabled -eq $true)
 Check 'blocked slider enabled by the toggle' ($tracks[2].Enabled)
 
-# --- the state selector swaps which state is edited -------------------------
-$fs = ByText 'When a fullscreen app is running'
-Check 'state selector present' ($null -ne $fs)
-$fs.Checked = $true
-Pump 400
-Shot $form '3d-editor-fullscreen.png'
+# --- the show-in dropdown ----------------------------------------------------
+# It replaces the old Normal/Fullscreen state selector: an overlay has one
+# appearance now, so this says WHEN the badge shows rather than which of two
+# looks is being edited. It must not rebuild the body — nothing below it
+# depends on the value.
+$showIn.SelectedIndex = 1     # Only in fullscreen apps
+Pump 250
+Check 'show-in applies immediately' ($item.ShowIn.ToString() -eq 'OnlyFullscreen') $item.ShowIn
+Shot $form '3d-editor-showin.png'
 
 $ctrls2 = AllControls $sub
 $tracks2 = @($ctrls2 | Where-Object { $_.GetType().Name -eq 'TrackBar' })
-Check 'still one editor on screen after switching' ($tracks2.Count -eq 4) "count=$($tracks2.Count)"
-Check 'fullscreen state has its own size' ($tracks2[0].Value -eq $item.Fullscreen.ClampedSize()) `
-  "slider=$($tracks2[0].Value) model=$($item.Fullscreen.ClampedSize())"
-Check 'editing fullscreen did not disturb normal' ($item.Normal.Size -eq 128) $item.Normal.Size
+Check 'still one editor on screen' ($tracks2.Count -eq 4) "count=$($tracks2.Count)"
+Check 'changing show-in left the appearance alone' ($item.Appearance.Size -eq 128) $item.Appearance.Size
+Check 'size slider not rebound by the dropdown' ($tracks2[0].Value -eq 128) $tracks2[0].Value
 
-$tracks2[0].Value = 200
-$tracks2[0].GetType().GetMethod('OnScroll', $flags).Invoke($tracks2[0], @([EventArgs]::Empty))
-Pump 150
-Check 'edits now land on the fullscreen state' ($item.Fullscreen.Size -eq 200) $item.Fullscreen.Size
-Check 'normal state still untouched' ($item.Normal.Size -eq 128) $item.Normal.Size
+$showIn.SelectedIndex = 2     # Always
+Pump 250
+Check 'show-in reaches Always' ($item.ShowIn.ToString() -eq 'Always') $item.ShowIn
 
 # --- blocked-key preview -----------------------------------------------------
 $demo = @($ctrls2 | Where-Object { $_.Text -eq 'Preview a blocked key' })[0]

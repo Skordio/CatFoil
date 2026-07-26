@@ -40,7 +40,7 @@ internal sealed class OverlayCard : Panel
     {
         _item = item;
         _defaultIcon = defaultIcon;
-        _thumbIcon = OverlayIcon.Load(item.Normal, defaultIcon);
+        _thumbIcon = OverlayIcon.Load(item.Appearance, defaultIcon);
 
         BackColor = Color.White;
         Padding = new Padding(1);
@@ -120,15 +120,21 @@ internal sealed class OverlayCard : Panel
 
     private static string Describe(OverlayItem item)
     {
-        string icon = item.Normal.IconSource switch
+        OverlayAppearance a = item.Appearance;
+        string icon = a.IconSource switch
         {
-            OverlayIconSource.Custom when !string.IsNullOrWhiteSpace(item.Normal.CustomIconFile) => "custom image",
-            OverlayIconSource.Gallery => IconGallery.Find(item.Normal.GalleryIconId)?.Label.ToLowerInvariant()
+            OverlayIconSource.Custom when !string.IsNullOrWhiteSpace(a.CustomIconFile) => "custom image",
+            OverlayIconSource.Gallery => IconGallery.Find(a.GalleryIconId)?.Label.ToLowerInvariant()
                                          ?? "built-in icon",
             _ => "default cat",
         };
-        string fullscreen = item.Fullscreen.Visible ? "shown in fullscreen" : "hidden in fullscreen";
-        return $"{item.Normal.ClampedSize()} px · {icon} · {fullscreen}";
+        string when = item.ShowIn switch
+        {
+            OverlayShowIn.OnlyFullscreen => "only in fullscreen",
+            OverlayShowIn.Always => "always shown",
+            _ => "except in fullscreen",
+        };
+        return $"{a.ClampedSize()} px · {icon} · {when}";
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -143,10 +149,9 @@ internal sealed class OverlayCard : Panel
         using (var back = new SolidBrush(ThumbBack))
             g.FillRectangle(back, thumb);
 
-        // Drawn even when the badge is hidden in this state — the thumbnail says
-        // what the overlay looks like, and the summary line says when it shows.
-        // (Draw itself doesn't consult Visible; only callers do.)
-        OverlayRenderer.Draw(g, thumb, _item.Normal, _thumbIcon, null, flashOn: false);
+        // The thumbnail says what the overlay looks like; the summary line says
+        // when it shows.
+        OverlayRenderer.Draw(g, thumb, _item.Appearance, _thumbIcon, null, flashOn: false);
     }
 
     protected override void Dispose(bool disposing)

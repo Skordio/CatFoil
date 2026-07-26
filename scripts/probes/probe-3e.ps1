@@ -25,7 +25,7 @@ Add-Type -AssemblyName System.Windows.Forms
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $gT  = $asm.GetType('CatFoil.IconGallery')
-$stT = $asm.GetType('CatFoil.OverlayStateSettings')
+$stT = $asm.GetType('CatFoil.OverlayAppearance')
 $oiT = $asm.GetType('CatFoil.OverlayIcon')
 $srcT = $asm.GetType('CatFoil.OverlayIconSource')
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::Public

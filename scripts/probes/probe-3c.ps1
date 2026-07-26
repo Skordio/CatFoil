@@ -25,7 +25,7 @@ Add-Type -AssemblyName System.Drawing
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $rT  = $asm.GetType('CatFoil.OverlayRenderer')
-$stT = $asm.GetType('CatFoil.OverlayStateSettings')
+$stT = $asm.GetType('CatFoil.OverlayAppearance')
 $shapeT = $asm.GetType('CatFoil.OverlayShape')
 
 $fails = 0

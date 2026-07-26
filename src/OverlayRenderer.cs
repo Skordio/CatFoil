@@ -56,7 +56,7 @@ public static class OverlayRenderer
     /// <param name="blocked">True for the whole blocked-key window, not just the
     /// blink phase — this is what the separate blocked opacity follows, so the
     /// badge holds its reaction steady while the ring pulses.</param>
-    public static void Draw(Graphics g, Rectangle bounds, OverlayStateSettings state,
+    public static void Draw(Graphics g, Rectangle bounds, OverlayAppearance state,
         Bitmap icon, string? remainingText, bool flashOn, bool blocked = false)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0) return;
@@ -127,7 +127,7 @@ public static class OverlayRenderer
         g.DrawImage(layer, bounds, 0, 0, layer.Width, layer.Height, GraphicsUnit.Pixel, attrs);
     }
 
-    private static void DrawFlashRing(Graphics g, Rectangle bounds, OverlayStateSettings state, int radius)
+    private static void DrawFlashRing(Graphics g, Rectangle bounds, OverlayAppearance state, int radius)
     {
         byte alpha = OpacityAlpha(state.ClampedRingOpacity());
         if (alpha == 0) return;
@@ -182,7 +182,7 @@ public static class OverlayRenderer
     // gains its own opacity — compositing it over an already-faded badge is a
     // different result, not just a brighter one, so that change belongs with
     // the setting that motivates it rather than in a step meant to be invisible.
-    private static void DrawBadge(Graphics g, Rectangle bounds, OverlayStateSettings state,
+    private static void DrawBadge(Graphics g, Rectangle bounds, OverlayAppearance state,
         Bitmap icon, string? remainingText, int radius)
     {
         if (state.Shape != OverlayShape.None)
