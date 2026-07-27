@@ -69,8 +69,12 @@ public sealed class SettingsForm : Form
         };
 
         Text = "CatFoil Settings";
-        MinimizeBox = false;
-        ShowInTaskbar = false;
+        // Its own taskbar button, grouped under the main window's icon (same
+        // process, so same AppUserModelID) — hovering the tray-adjacent taskbar
+        // icon shows both windows. Minimize has to come with it: a taskbar
+        // button that can't minimize its window is a button that does nothing.
+        ShowInTaskbar = true;
+        MinimizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         Font = DialogFont;
         BackColor = Color.White;
