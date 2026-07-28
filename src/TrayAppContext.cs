@@ -552,6 +552,11 @@ public sealed class TrayAppContext : ApplicationContext
         // for the whole session; this bounds that exposure to one tick.
         _hook.Reinstall(out _);
 
+        // Drop tracked modifier/chord state Windows says is stale — key-UPs
+        // missed on the secure desktop (Ctrl+Alt+Del, UAC, Win+L) or during a
+        // dropped-hook window otherwise jam the unlock combo permanently.
+        _hook.ResyncModifiers();
+
         if (_hook.IsLocked)
             // Checkpoint the running session's stats each tick so a crash or
             // force-kill while locked loses at most a minute, not the session.

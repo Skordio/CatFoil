@@ -21,6 +21,8 @@ $probes = @(
   'probe-3a'              # overlay list + sub-page navigation
   'probe-3d'              # overlay editor sub-page
   'probe-review-fixes'    # regression cover for the code-review findings
+  'probe-topmost-reassert' # badge climbs back above a later-raised topmost window
+  'probe-hook-resync'     # stale modifier/chord state cleared by the watchdog
 )
 
 $failed = @()

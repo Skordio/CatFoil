@@ -32,7 +32,9 @@ Keep the guard on any new probe that builds a `SettingsForm`.
 **`-STA` and pwsh 7.** Windows PowerShell 5.1 can't load the .NET 8 assembly and
 fails by handing back a null form, which looks like a pass.
 
-**Never lock the keyboard.** Nothing here touches `KeyboardHook`.
+**Never lock the keyboard.** `probe-hook-resync` constructs a `KeyboardHook` but
+never calls `Install`, so no hook exists and nothing can swallow a key; state is
+driven purely by reflection. Keep it that way — nothing here may install a hook.
 
 ## Gotchas that cost real time
 
@@ -67,6 +69,8 @@ fails by handing back a null form, which looks like a pass.
 | `probe-3a` | Overlay list, cards, sub-page navigation, default position |
 | `probe-3d` | Overlay editor: show-in dropdown, immediate apply, layout |
 | `probe-glyphs` | Contact sheet of candidate gallery glyphs (visual, manual) |
+| `probe-topmost-reassert` | Badge climbs back above a later-raised topmost window |
+| `probe-hook-resync` | Watchdog resync clears stale modifier/chord state (hook never installed) |
 
 `probe-render` compares against `artifacts\probes\render\*.bin`. Capture a new
 baseline with `-Mode baseline` **before** a change you intend to be invisible,

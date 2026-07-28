@@ -179,6 +179,11 @@ Features:
   this decides visibility only. Re-compositing the layered window is skipped unless
   the resolved icon, size, countdown, or flash actually changed since the last paint,
   so the poll is nearly free while nothing moves.
+- **Stays topmost**: each poll tick also re-asserts `HWND_TOPMOST`
+  (`SWP_NOMOVE|NOSIZE|NOACTIVATE`). Topmost is a band, not a place — an app that
+  raises itself topmost *later* (e.g. MPC-HC entering fullscreen) lands above the
+  badge and would stay there, hiding the locked signal and defeating the
+  blocked-key failsafe, which counts the buried badge as still `Visible`.
 - **Draggable** (position saved, clamped to the virtual screen); a **click**
   (no drag) opens the main window.
 - **Countdown text** during a timed lock (GDI+ `DrawString` so glyphs carry
@@ -232,7 +237,8 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
 | Piece | File | Role |
 | --- | --- | --- |
 | Low-level hook | `src/KeyboardHook.cs` | `WH_KEYBOARD_LL`. While **locked**, swallows every key-**down** (returns 1); key-**ups** always pass through so Windows' modifier state never desyncs. Mouse is untouched (no mouse hook). |
-| Unlock while locked | `src/KeyboardHook.cs` | RegisterHotKey can't fire while keys are swallowed, so the unlock combo is detected **inside** the hook, using modifier state the hook **tracks itself** (`TrackModifier`) — never `GetAsyncKeyState`, which is blind to swallowed keys. |
+| Unlock while locked | `src/KeyboardHook.cs` | RegisterHotKey can't fire while keys are swallowed, so the unlock combo is detected **inside** the hook, using modifier state the hook **tracks itself** (`TrackModifier`) — never `GetAsyncKeyState` to detect a *held* key, which is blind to swallowed key-downs. |
+| Stale-state resync | `src/KeyboardHook.cs` | The hook misses key-**ups** whenever input goes where it can't see (secure desktop: Ctrl+Alt+Del / UAC / Win+L, or a silently-dropped hook's dead window), and one stale "down" modifier jams the unlock combo while blocking keeps working. `ResyncModifiers` (called by the watchdog) clears tracked keys `GetAsyncKeyState` reports **released** — safe in that one direction, and only after a 5 s event-quiet period so a genuinely held (swallowed, hence OS-"up") key, which auto-repeats through the hook, is never touched. |
 | Classic hotkey | `src/HotkeyManager.cs` | `RegisterHotKey` (with `MOD_NOREPEAT`) on a `NativeWindow`; fires only while unlocked. This is the sole lock trigger in classic mode. |
 | Chord hotkey | `src/KeyboardHook.cs` | Opt-in "Alt + C + F"-style chord, detected in **both** lock states inside the hook (`CompletesChord`), since RegisterHotKey can't express multi-key chords. The completing keystroke is swallowed; earlier chord keys leak to the focused app while unlocked (documented trade-off). |
 | Toggle plumbing | `src/TrayAppContext.cs` | `ToggleLock` (400 ms debounce, since lock and unlock use the same keys) → `SetLocked`. Sets hook lock state and updates UI/tray/overlay. |

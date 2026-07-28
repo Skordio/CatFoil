@@ -24,6 +24,12 @@ public sealed class OverlayForm : Form
 
     private const uint MONITOR_DEFAULTTONEAREST = 2;
 
+    // Re-asserting topmost (see UpdateVisibility).
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE     = 0x0001;
+    private const uint SWP_NOMOVE     = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
     // Layered-window compositing.
     private const byte AC_SRC_OVER = 0x00;
     private const byte AC_SRC_ALPHA = 0x01;
@@ -40,6 +46,8 @@ public sealed class OverlayForm : Form
     private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+        int x, int y, int cx, int cy, uint uFlags);
     [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
@@ -290,6 +298,16 @@ public sealed class OverlayForm : Form
         }
 
         if (!Visible) Show();
+        else
+        {
+            // Being topmost isn't a place, it's a band — an app that raises
+            // itself topmost later (MPC-HC fullscreen, for one) lands ABOVE the
+            // badge and stays there, which both hides the "keyboard is locked"
+            // signal and defeats the blocked-key failsafe (the badge still
+            // counts as Visible). Climb back on every poll tick.
+            SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
         RenderIfChanged();
     }
 
