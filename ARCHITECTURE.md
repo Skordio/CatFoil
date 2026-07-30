@@ -62,7 +62,7 @@ column inside an `AutoScroll` panel, with `AddSection` / `AddCheck` / `AddHint` 
 settings window can be reopened repeatedly, and WinForms never disposes a Font
 assigned to a control).
 
-**Sub-pages.** Besides the six nav entries the shell can show one page reached
+**Sub-pages.** Besides the seven nav entries the shell can show one page reached
 from *within* another — `ShowSubPage` / `PopSubPage`, one deep. The header row
 grows a back button and a breadcrumb ("Overlays › Cat badge") while the nav list
 keeps highlighting the parent. The back button is an owner-drawn dark rounded
@@ -99,6 +99,13 @@ Pages:
   Volume applies only to a custom file — a scheme sound plays at whatever the
   system mixer says — so it greys out when the Windows sound is selected. The
   blocked cue is still throttled so a held key can't machine-gun it.
+- **Statistics** — lifetime lock sessions, total locked time (ticking live
+  during a lock via an in-progress-seconds callback from the tray), and
+  blocked-key count, with a confirm-then-save **Reset…**. Replaced the separate
+  `StatsForm` dialog; the tray's "Statistics…" entry now opens the settings
+  window on this page (`SelectPage<T>`). Its 1 s refresh timer runs only while
+  the page is on screen — the page is constructed hidden so the shell's first
+  `Visible = true` is a real transition that starts it.
 - **Advanced** — **Run as administrator (also block elevated windows)** with an
   indented sub-option **Start automatically at logon, elevated (no prompt)**.
   Checking "Run as administrator" relaunches CatFoil elevated (UAC prompt) so its
@@ -225,7 +232,7 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
   1. **Open CatFoil** (bold default) → show main window
   2. **Lock Keyboard** / **Unlock Keyboard** (label toggles with state)
   3. **Lock for…** submenu — 5/15/30/60 minutes, then auto-unlock
-  4. **Statistics…** → lifetime lock stats
+  4. **Statistics…** → the settings window, opened on its Statistics page
   5. **Settings…** → open the settings window
   6. — separator —
   7. **Exit** → shut the app down

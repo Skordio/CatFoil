@@ -397,19 +397,8 @@ public sealed class TrayAppContext : ApplicationContext
 
     private void ShowStats()
     {
-        using var stats = new StatsForm(_settings, _appIcon, InProgressLockSeconds, OnStatsReset);
-
-        // The owner may be hidden (closed to tray) or minimized; CenterParent
-        // against an invisible window can land anywhere, so center on screen.
-        if (_mainForm.Visible && _mainForm.WindowState != FormWindowState.Minimized)
-        {
-            stats.ShowDialog(_mainForm);
-        }
-        else
-        {
-            stats.StartPosition = FormStartPosition.CenterScreen;
-            stats.ShowDialog();
-        }
+        ShowSettings();
+        _settingsForm!.SelectPage<StatisticsPage>();
     }
 
     private void ShowWelcome()
@@ -429,7 +418,7 @@ public sealed class TrayAppContext : ApplicationContext
             return;
         }
 
-        _settingsForm = new SettingsForm(_settings) { Icon = _appIcon };
+        _settingsForm = new SettingsForm(_settings, InProgressLockSeconds, OnStatsReset) { Icon = _appIcon };
         _settingsForm.SettingsSaved += ApplyLiveEdit;
         // The elevated relaunch is already running; quit so it can take over.
         _settingsForm.RestartElevatedRequested += ExitApp;

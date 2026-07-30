@@ -63,7 +63,7 @@ driven purely by reflection. Keep it that way — nothing here may install a hoo
 | `probe-3c` | Opacity uniformity, blocked/ring opacity, shape, colour |
 | `probe-3e` | Icon gallery: ink, fit, centring, tint, cache ownership |
 | `probe-multi-overlay` | Several live badges: identity, cascade, independence |
-| `probe-settings` | Settings shell renders all six pages |
+| `probe-settings` | Settings shell renders every page |
 | `probe-behavior` | Immediate-apply: live announce, debounced write |
 | `probe-scroll` | A page scrolls once its content outgrows the window |
 | `probe-3a` | Overlay list, cards, sub-page navigation, default position |
@@ -71,6 +71,7 @@ driven purely by reflection. Keep it that way — nothing here may install a hoo
 | `probe-glyphs` | Contact sheet of candidate gallery glyphs (visual, manual) |
 | `probe-topmost-reassert` | Badge climbs back above a later-raised topmost window |
 | `probe-hook-resync` | Watchdog resync clears stale modifier/chord state (hook never installed) |
+| `probe-stats-page` | Statistics page: values, live in-progress time, reset, timer lifecycle |
 
 `probe-render` compares against `artifacts\probes\render\*.bin`. Capture a new
 baseline with `-Mode baseline` **before** a change you intend to be invisible,

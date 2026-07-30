@@ -51,7 +51,14 @@ public sealed class SettingsForm : Form
     /// stop listening for the current one until it goes false again.</summary>
     public event Action<bool>? HotkeyCaptureChanged;
 
-    public SettingsForm(Settings settings)
+    public SettingsForm(Settings settings) : this(settings, null, null) { }
+
+    /// <param name="inProgressLockSeconds">Elapsed seconds of a lock session in
+    /// progress (0 when unlocked) — the Statistics page adds it to the displayed
+    /// total so the read-out ticks live while the keyboard is locked.</param>
+    /// <param name="onStatsReset">Called when the Statistics page zeroes the
+    /// counters, so the owner can restart an in-progress session's clock.</param>
+    public SettingsForm(Settings settings, Func<long>? inProgressLockSeconds, Action? onStatsReset)
     {
         _session = new SettingsSession(settings);
         _session.Changed += () => SettingsSaved?.Invoke();
@@ -64,6 +71,7 @@ public sealed class SettingsForm : Form
             new LockingPage(_session),
             new OverlaysPage(_session),
             new SoundsPage(_session),
+            new StatisticsPage(_session, inProgressLockSeconds, onStatsReset),
             new AdvancedPage(_session),
             new AboutPage(_session),
         };
@@ -170,6 +178,14 @@ public sealed class SettingsForm : Form
         var text = new Rectangle(e.Bounds.X + 18, e.Bounds.Y, e.Bounds.Width - 22, e.Bounds.Height);
         TextRenderer.DrawText(e.Graphics, _pages[e.Index].Title, DialogFont, text, NavText,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+    }
+
+    /// <summary>Navigates to a page by type — how the tray's "Statistics…"
+    /// entry lands on that page rather than wherever the window last was.</summary>
+    internal void SelectPage<T>() where T : SettingsPage
+    {
+        int index = Array.FindIndex(_pages, p => p is T);
+        if (index >= 0) _nav.SelectedIndex = index;
     }
 
     private void ShowPage(int index)

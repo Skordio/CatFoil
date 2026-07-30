@@ -23,6 +23,7 @@ $probes = @(
   'probe-review-fixes'    # regression cover for the code-review findings
   'probe-topmost-reassert' # badge climbs back above a later-raised topmost window
   'probe-hook-resync'     # stale modifier/chord state cleared by the watchdog
+  'probe-stats-page'      # Statistics page in the shell (replaced StatsForm)
 )
 
 $failed = @()
