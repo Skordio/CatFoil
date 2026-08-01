@@ -79,6 +79,11 @@ public sealed class TrayAppContext : ApplicationContext
         _hotkey.HotkeyPressed += ToggleLock;
         ApplyHotkeySettings();
         ApplyStartupSettings();
+        // Installs from before 0.4.2 registered the elevated logon task with a
+        // descriptor only Administrators can delete, so an unelevated uninstall
+        // strands it. Repairing needs elevation — which that very task hands us
+        // at logon — and spawns schtasks, so it stays off the startup path.
+        System.Threading.Tasks.Task.Run(Startup.RepairTaskSecurity);
         // Seed the baselines ApplyLiveEdit compares against.
         _appliedHotkeyState = HotkeyState();
         _appliedStartupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);

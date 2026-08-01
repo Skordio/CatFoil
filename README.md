@@ -74,7 +74,8 @@ To build the distributable artifacts, install
 All three publish the same self-contained single-file EXE (version comes from `<Version>` in
 `CatFoil.csproj`); `build-release.ps1` publishes once and emits both the portable EXE and the
 installer, so they're guaranteed to be the same binary. The installer (`installer\CatFoil.iss`)
-is offline and supports silent install (`/VERYSILENT`), so it's ready for the Microsoft Store's
+is offline and supports silent install (`/VERYSILENT /CURRENTUSER` — `/VERYSILENT` on its own
+still shows the install-mode dialog), so it's ready for the Microsoft Store's
 MSI/EXE submission path — that path additionally requires code-signing the setup and payload with
 a Microsoft-Trusted-Root cert.
 

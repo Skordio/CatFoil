@@ -36,6 +36,13 @@ fails by handing back a null form, which looks like a pass.
 never calls `Install`, so no hook exists and nothing can swallow a key; state is
 driven purely by reflection. Keep it that way — nothing here may install a hook.
 
+**Never strand a scheduled task.** `probe-task-sddl` creates a real (disabled,
+trigger-less) task as a fixture. Two Task Scheduler calls fail *after* damaging
+the task, leaving one that needs elevation to remove: passing an SDDL to
+`RegisterTask`, and stamping a protected DACL (`D:P`). Both are refused by
+`TrySetTaskSddl` or avoided by the probe, and the fixture name carries the PID so
+a stranded one can never block the next run.
+
 ## Gotchas that cost real time
 
 - Reflection needs `.PSObject.BaseObject` on **every** reference-type argument.
@@ -72,6 +79,7 @@ driven purely by reflection. Keep it that way — nothing here may install a hoo
 | `probe-topmost-reassert` | Badge climbs back above a later-raised topmost window |
 | `probe-hook-resync` | Watchdog resync clears stale modifier/chord state (hook never installed) |
 | `probe-stats-page` | Statistics page: values, live in-progress time, reset, timer lifecycle |
+| `probe-task-sddl` | Logon task's security descriptor: delete grant, no write, self-repair |
 
 `probe-render` compares against `artifacts\probes\render\*.bin`. Capture a new
 baseline with `-Mode baseline` **before** a change you intend to be invisible,

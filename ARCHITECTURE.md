@@ -403,9 +403,34 @@ Both registrations can be removed with `CatFoil.exe --uninstall-cleanup`
 (`Startup.UninstallCleanup`, handled in `Program.Main` before the single-instance
 mutex): it deletes the Run value and the task **only when they point at the
 invoking EXE**, so an installed copy's uninstall never touches a portable copy's
-registration. The installer's `[UninstallRun]` entry invokes it on uninstall; the
-elevated task is deletable even unelevated because its author is the user's own
-account.
+registration. The installer's `[UninstallRun]` entry invokes it on uninstall.
+
+That delete only works because of the task's security descriptor. Task Scheduler
+stamps one at registration reflecting the registering context, and the task must
+be registered elevated (`RunLevel=HighestAvailable`), so by default the user's
+one ACE is `FR` — read, no delete — and the rest belongs to Administrators and
+SYSTEM. An administrator's everyday token carries Administrators **deny-only**,
+so the unelevated per-user uninstaller was denied and left an orphan task
+pointing at a deleted EXE. `EnableTask` therefore creates the task with
+`schtasks` as before and then stamps `Startup.BuildTaskSddl()` over it —
+`D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRSD;;;<user SID>)` — adding read + DELETE for
+this user and deliberately nothing writable, since write on a
+`HighestAvailable` task would let an unelevated process rewrite the action into
+elevated code at logon. `RepairTaskSecurity()` re-stamps tasks created by
+earlier versions; `TrayAppContext` calls it off-thread at every launch, and it
+does nothing unless elevated, the task points at this EXE, and the grant is
+actually missing.
+
+Two Task Scheduler behaviours make this narrower than it looks, and both fail
+*destructively* — the call is refused only after the task has been altered,
+leaving one that needs elevation to remove:
+
+- **Passing an SDDL to `RegisterTask` is rejected** unless the resulting DACL
+  still grants the caller write access. Hence create-then-stamp rather than
+  registering with the descriptor.
+- **A protected DACL (`D:P`, inheritance blocked) is rejected** after the
+  inherited ACEs are already stripped. `TrySetTaskSddl` refuses any such SDDL
+  outright.
 
 
 ### 5.4 Audio cues — `src/Sounds.cs`, `src/AudioPlayer.cs`, `src/SoundStore.cs`
@@ -506,8 +531,10 @@ artifact destined for the Microsoft Store; the portable is a GitHub-Releases-onl
   `scripts/build-installer.ps1`. `PrivilegesRequired=lowest` +
   `PrivilegesRequiredOverridesAllowed=dialog` show a **"Select Install Mode" dialog** so the
   user picks **per-user** (default, **no UAC**, → `%LOCALAPPDATA%\Programs\CatFoil`) or
-  **all-users** (asks for admin, → `C:\Program Files\CatFoil`); a `/VERYSILENT` install takes
-  the per-user path. `ArchitecturesInstallIn64BitMode=x64compatible` makes the per-machine
+  **all-users** (asks for admin, → `C:\Program Files\CatFoil`). A **truly silent install is
+  `/VERYSILENT /CURRENTUSER`**: `/VERYSILENT` on its own still shows the install-mode dialog
+  (verified 2026-07-27), because `PrivilegesRequiredOverridesAllowed=dialog` asks before the
+  silent flag is honoured. `ArchitecturesInstallIn64BitMode=x64compatible` makes the per-machine
   path land in the real 64-bit Program Files (the payload is win-x64). `{autopf}`, `{group}`,
   and `{autodesktop}` resolve to the matching per-user/common locations automatically, so both
   modes get a Start-menu shortcut and an Apps & Features uninstaller.
