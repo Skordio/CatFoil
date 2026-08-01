@@ -25,6 +25,7 @@ $probes = @(
   'probe-hook-resync'     # stale modifier/chord state cleared by the watchdog
   'probe-stats-page'      # Statistics page in the shell (replaced StatsForm)
   'probe-task-sddl'       # logon task carries a descriptor the user can delete
+  'probe-unlock-cue'      # unlock-gesture keys don't fire the blocked-key cue
 )
 
 $failed = @()

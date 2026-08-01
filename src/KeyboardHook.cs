@@ -165,11 +165,12 @@ public sealed class KeyboardHook : IDisposable
             if (IsLocked && isDown)
             {
                 bool unlock = MatchesUnlockCombo(vk);
+                bool gesture = !unlock && PartOfUnlockGesture(vk);
                 if (HookLog.Enabled)
-                    HookLog.Record($"DOWN {vk} (vk={(int)vk}) locked=True -> {(unlock ? "UNLOCK" : "BLOCKED")} (swallow)");
+                    HookLog.Record($"DOWN {vk} (vk={(int)vk}) locked=True -> {(unlock ? "UNLOCK" : gesture ? "GESTURE (no cue)" : "BLOCKED")} (swallow)");
                 if (unlock)
                     UnlockComboPressed?.Invoke();
-                else
+                else if (!gesture)
                     BlockedKeyPress?.Invoke();
 
                 // Returning 1 swallows the keystroke. The mouse is untouched
@@ -277,6 +278,28 @@ public sealed class KeyboardHook : IDisposable
         if (tracked && (GetAsyncKeyState((int)vk) & 0x8000) == 0)
             tracked = false;
     }
+
+    // Nobody hits both keys of Alt+G in the same instant: Alt lands first, and
+    // treating it as a blocked key made the unlock gesture itself beep, flash,
+    // and count toward the blocked-keys stat. Keys the user presses on the way
+    // INTO the combo or chord are still swallowed — only the cue is skipped. A
+    // cat parked exactly on Alt gets no cue either; acceptable, since the cue
+    // exists to guide the human and letters/space still fire it.
+    private bool PartOfUnlockGesture(Keys vk)
+    {
+        if (IsRequiredModifier(UnlockCombo, vk)) return true;
+        if (_chordKeys.Length == 0) return false;
+        return Array.IndexOf(_chordKeys, vk) >= 0 || IsRequiredModifier(ChordModifiers, vk);
+    }
+
+    // Keys.None has no modifier flags set, so a disabled combo matches nothing.
+    private static bool IsRequiredModifier(Keys combo, Keys vk) => vk switch
+    {
+        Keys.LControlKey or Keys.RControlKey => (combo & Keys.Control) != 0,
+        Keys.LMenu or Keys.RMenu             => (combo & Keys.Alt) != 0,
+        Keys.LShiftKey or Keys.RShiftKey     => (combo & Keys.Shift) != 0,
+        _ => false,
+    };
 
     private bool MatchesUnlockCombo(Keys vk)
     {

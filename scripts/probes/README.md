@@ -80,6 +80,7 @@ a stranded one can never block the next run.
 | `probe-hook-resync` | Watchdog resync clears stale modifier/chord state (hook never installed) |
 | `probe-stats-page` | Statistics page: values, live in-progress time, reset, timer lifecycle |
 | `probe-task-sddl` | Logon task's security descriptor: delete grant, no write, self-repair |
+| `probe-unlock-cue` | Combo/chord keys are swallowed silently; everything else still cues |
 
 `probe-render` compares against `artifacts\probes\render\*.bin`. Capture a new
 baseline with `-Mode baseline` **before** a change you intend to be invisible,

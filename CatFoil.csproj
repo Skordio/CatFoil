@@ -21,4 +21,11 @@
     <EmbeddedResource Include="assets\cat.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Prototype spikes are their own projects on their own branches, but their
+         gitignored bin/obj survive a branch switch, and the default glob would
+         compile the generated .cs left in them. -->
+    <Compile Remove="prototypes/**" />
+  </ItemGroup>
+
 </Project>
