@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Exe (not WinExe) on purpose: the attached console doubles as a log sink
+         and lets "-\-list" print, which is all a prototype needs. -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MouseDeviceBlock</AssemblyName>
+    <RootNamespace>MouseDeviceBlockPrototype</RootNamespace>
+  </PropertyGroup>
+
+</Project>
