@@ -188,6 +188,17 @@ public sealed class SettingsForm : Form
         if (index >= 0) _nav.SelectedIndex = index;
     }
 
+    /// <summary>Navigates by title — the string an elevation relaunch carries
+    /// (see <see cref="RestoreUi"/>). An unknown title changes nothing.</summary>
+    internal void SelectPage(string title)
+    {
+        int index = Array.FindIndex(_pages, p => p.Title == title);
+        if (index >= 0) _nav.SelectedIndex = index;
+    }
+
+    /// <summary>The title of the page currently shown.</summary>
+    internal string CurrentPageTitle => _pages[Math.Max(0, _nav.SelectedIndex)].Title;
+
     private void ShowPage(int index)
     {
         if (index < 0 || index >= _pages.Length) return;

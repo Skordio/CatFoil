@@ -45,7 +45,7 @@ public sealed class TrayAppContext : ApplicationContext
     private bool _hotkeyCapture;
     // What the hotkey and startup registrations were last built from, so a live
     // edit that touches neither doesn't redo them. See ApplyLiveEdit.
-    private (Keys, bool, bool, Keys, string) _appliedHotkeyState;
+    private (Keys, bool) _appliedHotkeyState;
     private (bool, bool) _appliedStartupState;
 
     public TrayAppContext(EventWaitHandle showEvent)
@@ -68,6 +68,8 @@ public sealed class TrayAppContext : ApplicationContext
         // Hook events fire mid-hook; defer the real work so the hook returns fast.
         _hook.BlockedKeyPress += () => _mainForm.BeginInvoke(OnBlockedKey);
         _hook.UnlockComboPressed += () => _mainForm.BeginInvoke(() => SetLocked(false));
+        // The chord engine is dormant (option pulled — see Settings) but the
+        // wiring stays so re-adding it is one settings branch, not archaeology.
         _hook.ChordPressed += () => _mainForm.BeginInvoke(ToggleLock);
         if (!_hook.Install(out int hookError))
         {
@@ -130,8 +132,25 @@ public sealed class TrayAppContext : ApplicationContext
         };
         _tray.DoubleClick += (_, _) => ShowMainWindow();
 
-        if (!_settings.StartMinimized)
+        // An elevation relaunch says which windows were open when the user hit
+        // "Run as administrator"; re-open exactly those. StartMinimized only
+        // governs an ordinary launch — following it here made the app vanish
+        // mid-settings-visit for start-closed users.
+        string[] launchArgs = Environment.GetCommandLineArgs();
+        if (RestoreUi.Requested(launchArgs))
+        {
+            if (RestoreUi.MainWindow(launchArgs))
+                ShowMainWindow();
+            if (RestoreUi.SettingsPage(launchArgs) is string page)
+            {
+                ShowSettings();
+                _settingsForm!.SelectPage(page);
+            }
+        }
+        else if (!_settings.StartMinimized)
+        {
             ShowMainWindow();
+        }
 
         if (!_settings.WelcomeShown)
         {
@@ -464,12 +483,7 @@ public sealed class TrayAppContext : ApplicationContext
     }
 
     // Everything ApplyHotkeySettings reads, as a comparable value.
-    private (Keys, bool, bool, Keys, string) HotkeyState() => (
-        _settings.Hotkey,
-        _settings.HotkeyEnabled,
-        _settings.UseChordHotkey,
-        _settings.ChordModifiers,
-        string.Join(",", _settings.ChordKeys ?? Array.Empty<Keys>()));
+    private (Keys, bool) HotkeyState() => (_settings.Hotkey, _settings.HotkeyEnabled);
 
     /// <summary>
     /// Stop and resume listening for the hotkey while the settings window binds
@@ -491,22 +505,12 @@ public sealed class TrayAppContext : ApplicationContext
         if (_hotkeyCapture)
         {
             _hotkey.Unregister();
-            _hook.SetChordKeys(Array.Empty<Keys>());
             return;
         }
 
-        // Chord mode: our hook detects the combo in both lock states and
-        // RegisterHotKey is retired (it can't express multi-key chords).
-        if (_settings.HotkeyEnabled && _settings.UseChordHotkey && _settings.ChordKeys.Length >= 2)
-        {
-            _hotkey.Unregister();
-            _hook.UnlockCombo = Keys.None;
-            _hook.ChordModifiers = _settings.ChordModifiers;
-            _hook.SetChordKeys(_settings.ChordKeys);
-            return;
-        }
-
-        _hook.SetChordKeys(Array.Empty<Keys>());
+        // No chord branch here anymore: the option is pulled (see Settings),
+        // so the hook's chord engine is never armed and RegisterHotKey is
+        // always the lock trigger.
         _hook.UnlockCombo = _settings.HotkeyEnabled ? _settings.Hotkey : Keys.None;
         if (_settings.HotkeyEnabled)
         {

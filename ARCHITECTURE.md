@@ -78,9 +78,10 @@ Pages:
 - **General** — Hide to tray on close · Start CatFoil when Windows starts ·
   Start hidden in the system tray.
 - **Locking** — hotkey enable checkbox · a click-to-capture hotkey box
-  ("press keys") · a **Multi-key chord** checkbox (tooltip explains the
-  leak-through trade-off); capture logic differs for classic vs chord mode.
-  Then auto-lock: enable checkbox + minutes selector.
+  ("press keys"). Then auto-lock: enable checkbox + minutes selector. (The
+  multi-key chord option was pulled 2026-08-02 — offering a hotkey whose
+  leading keys leak into the focused app felt wrong. The hook's chord engine
+  and the stored chord settings remain, dormant, for a possible return.)
 - **Overlays** — Show overlays while locked (the master switch over every
   configured overlay), then one **`OverlayCard`** per overlay (§5.1) and an
   **Add overlay** button. Each card shows a live thumbnail painted through the
@@ -247,7 +248,7 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
 | Unlock while locked | `src/KeyboardHook.cs` | RegisterHotKey can't fire while keys are swallowed, so the unlock combo is detected **inside** the hook, using modifier state the hook **tracks itself** (`TrackModifier`) — never `GetAsyncKeyState` to detect a *held* key, which is blind to swallowed key-downs. Keys on the way *into* the combo or chord (`PartOfUnlockGesture`: the combo's required modifiers, the chord's keys/modifiers) are swallowed **without** raising `BlockedKeyPress` — nobody hits Alt+G in one instant, and the Alt half of the gesture must not beep, flash, or count as a blocked key. |
 | Stale-state resync | `src/KeyboardHook.cs` | The hook misses key-**ups** whenever input goes where it can't see (secure desktop: Ctrl+Alt+Del / UAC / Win+L, or a silently-dropped hook's dead window), and one stale "down" modifier jams the unlock combo while blocking keeps working. `ResyncModifiers` (called by the watchdog) clears tracked keys `GetAsyncKeyState` reports **released** — safe in that one direction, and only after a 5 s event-quiet period so a genuinely held (swallowed, hence OS-"up") key, which auto-repeats through the hook, is never touched. |
 | Classic hotkey | `src/HotkeyManager.cs` | `RegisterHotKey` (with `MOD_NOREPEAT`) on a `NativeWindow`; fires only while unlocked. This is the sole lock trigger in classic mode. |
-| Chord hotkey | `src/KeyboardHook.cs` | Opt-in "Alt + C + F"-style chord, detected in **both** lock states inside the hook (`CompletesChord`), since RegisterHotKey can't express multi-key chords. The completing keystroke is swallowed; earlier chord keys leak to the focused app while unlocked (documented trade-off). |
+| Chord hotkey (dormant) | `src/KeyboardHook.cs` | "Alt + C + F"-style chord detection (`CompletesChord`) still lives in the hook, probe-covered — but **nothing arms it**: the UI option was pulled 2026-08-02 because the chord's leading keys leak to the focused app while unlocked. The chord settings survive in settings.json as unread legacy so a re-add restores the user's chord. |
 | Toggle plumbing | `src/TrayAppContext.cs` | `ToggleLock` (400 ms debounce, since lock and unlock use the same keys) → `SetLocked`. Sets hook lock state and updates UI/tray/overlay. |
 | Idle resilience | `src/TrayAppContext.cs` | A 60 s **watchdog** plus power-resume / session-unlock handlers re-arm the hotkey and reinstall the hook — in both lock states — because Windows silently drops both after long idle or sleep. `Reinstall` adds the new hook before releasing the old, so the swap has no instant where a keystroke could slip past a lock. |
 
@@ -259,8 +260,9 @@ the always-available escape hatch.
 ## 5. Settings model — `src/Settings.cs`
 
 JSON at `%APPDATA%\CatFoil\settings.json` (`Keys` serialized as string flags).
-Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled`, `UseChordHotkey`
-(default off) + `ChordModifiers`/`ChordKeys`, `MinimizeToTrayOnClose`,
+Notable fields: `Hotkey` (default **Alt+G**), `HotkeyEnabled` (the chord trio
+`UseChordHotkey`/`ChordModifiers`/`ChordKeys` is unread legacy — option pulled
+2026-08-02, data kept for a possible return), `MinimizeToTrayOnClose`,
 `StartWithWindows`, `StartElevatedOnBoot`, `StartMinimized`, `ShowOverlay`,
 `WelcomeShown`, `Overlays` (§5.1), plus `AutoLockEnabled`/`AutoLockMinutes` and the
 lifetime `Stat*` counters. Corrupt files fall back to defaults. `Save()` writes to a
@@ -461,7 +463,6 @@ closes.
 
 - Keyboard lock/unlock (mouse stays live); Ctrl+Alt+Del escape hatch.
 - Three ways to toggle: main-window button, tray menu, global hotkey.
-- Classic single-combo hotkey **or** opt-in multi-key chord.
 - Draggable, customizable overlay badges with custom icons, size, and background
   — with live previews — each shown except in, only in, or regardless of
   fullscreen apps.
@@ -503,7 +504,11 @@ are out of a user-mode hook's reach:
   administrator** toggle (§2.2) closes: it relaunches CatFoil elevated
   (`src/Elevation.cs` → `runas`), and the new instance waits for the old one to
   exit (`--await-exit <pid>`, handled in `src/Program.cs`) before taking the
-  single-instance slot. Even elevated, Ctrl+Alt+Del and Win+L remain unblockable.
+  single-instance slot. The relaunch command line also carries the open-windows
+  state (`src/RestoreUi.cs`: `--restore-main`, `--restore-settings <page>`), and
+  the elevated instance re-opens exactly those — overriding `StartMinimized`,
+  which otherwise made the app vanish mid-settings-visit for start-closed users.
+  Even elevated, Ctrl+Alt+Del and Win+L remain unblockable.
 - **Key-ups always pass through** by design (prevents stuck modifiers) — harmless,
   since a lone key-up can't type. Some special hardware/media/Fn keys may also
   bypass the hook depending on the keyboard. The **mouse is never blocked**.

@@ -4,7 +4,7 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 
 ## Features
 
-- **One-click lock** from the main window, the tray menu, or a global hotkey (default **Alt+G** — rebindable, and optionally a multi-key chord like Alt + C + F).
+- **One-click lock** from the main window, the tray menu, or a global hotkey (default **Alt+G** — rebindable).
 - **Lives in the system tray** with a cat icon; closing the window hides it to the tray instead of exiting.
 - **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. By default it stays out of the way of fullscreen apps (videos, games) and reappears afterwards — or you can have it show only over fullscreen apps, or always.
 - **Blocked-key feedback**: pressing a key while locked flashes the overlay badge red, and restores the main window if you'd otherwise have no way back in.

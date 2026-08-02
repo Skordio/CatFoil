@@ -37,15 +37,19 @@ internal static class Elevation
     /// elevated process was started — the caller should then quit so it can take
     /// over — or false if the user declined the prompt (or it otherwise failed),
     /// in which case nothing has changed and this instance keeps running.
+    /// <paramref name="extraArguments"/> rides along verbatim — used to hand the
+    /// open-windows state to the elevated instance (see <see cref="RestoreUi"/>).
     /// </summary>
-    public static bool TryRelaunchElevated()
+    public static bool TryRelaunchElevated(string extraArguments = "")
     {
+        string args = $"{AwaitExitFlag} {Environment.ProcessId}";
+        if (extraArguments.Length > 0) args += " " + extraArguments;
         var psi = new ProcessStartInfo
         {
             FileName = Application.ExecutablePath,
             UseShellExecute = true,   // required for the "runas" verb / UAC
             Verb = "runas",
-            Arguments = $"{AwaitExitFlag} {Environment.ProcessId}",
+            Arguments = args,
         };
         try
         {

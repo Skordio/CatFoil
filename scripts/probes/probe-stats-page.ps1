@@ -103,7 +103,9 @@ try {
   Check 'refresh timer stops when page hidden' (-not $refresh.Enabled)
 
   # The tray routes "Statistics..." here: SelectPage<StatisticsPage>().
-  $select = $formType.GetMethod('SelectPage', $flags)
+  # GetMethod by name is ambiguous since SelectPage(string) exists; pick the
+  # generic overload explicitly.
+  $select = $formType.GetMethods($flags) | Where-Object { $_.Name -eq 'SelectPage' -and $_.IsGenericMethod }
   Check 'SelectPage<T> exists' ($null -ne $select)
   if ($null -ne $select) {
     $select.MakeGenericMethod($pageType).Invoke($form.PSObject.BaseObject, @()) | Out-Null

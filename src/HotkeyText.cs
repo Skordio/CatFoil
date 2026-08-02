@@ -23,11 +23,10 @@ internal static class HotkeyText
     public static string[] HotkeyParts(Keys combo) =>
         ChordParts(combo, new[] { combo & Keys.KeyCode });
 
-    /// <summary>The parts of whichever hotkey style is currently active.</summary>
-    public static string[] ActiveParts(Settings s) =>
-        s.UseChordHotkey && s.ChordKeys.Length >= 2
-            ? ChordParts(s.ChordModifiers, s.ChordKeys)
-            : HotkeyParts(s.Hotkey);
+    /// <summary>The parts of the active hotkey. Chord mode is no longer offered
+    /// (its stored settings are legacy — see Settings), so this is always the
+    /// classic combo.</summary>
+    public static string[] ActiveParts(Settings s) => HotkeyParts(s.Hotkey);
 
     public static string Format(Keys combo) => string.Join(" + ", HotkeyParts(combo));
 }

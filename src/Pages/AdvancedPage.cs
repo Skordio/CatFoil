@@ -89,7 +89,15 @@ internal sealed class AdvancedPage : SettingsPage
         // Make sure any debounced edit is on disk before handing off, so the
         // elevated instance reads the settings the user just made.
         Session.Flush();
-        if (Elevation.TryRelaunchElevated())
+        // Tell the elevated instance which windows are up, so it re-opens them
+        // instead of following StartMinimized: the settings window on this page
+        // (it hosts this checkbox, so it's open by definition), and the main
+        // window if the user had it showing too.
+        bool mainVisible = false;
+        foreach (Form form in Application.OpenForms)
+            if (form is MainForm { Visible: true }) mainVisible = true;
+        string restore = RestoreUi.Encode(mainVisible, (FindForm() as SettingsForm)?.CurrentPageTitle ?? Title);
+        if (Elevation.TryRelaunchElevated(restore))
         {
             Session.RequestRestartElevated();
         }

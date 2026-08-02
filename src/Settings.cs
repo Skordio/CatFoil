@@ -27,8 +27,11 @@ public sealed class Settings
     public Keys Hotkey { get; set; } = Keys.Alt | Keys.G;
     public bool HotkeyEnabled { get; set; } = true;
 
-    // Chord mode: modifiers + several keys held together (e.g. Alt+C+F),
-    // detected by our own hook because RegisterHotKey can't express it.
+    // LEGACY — the chord option was pulled from the UI 2026-08-02 (its leading
+    // keys leak into the focused app while unlocked, which felt wrong to offer).
+    // Nothing reads these anymore; they stay so an old settings.json round-trips
+    // and a future re-add finds the user's chord instead of forgetting it. The
+    // KeyboardHook chord engine is also still in place, dormant.
     public bool UseChordHotkey { get; set; }
     public Keys ChordModifiers { get; set; } = Keys.Alt;
     public Keys[] ChordKeys { get; set; } = new[] { Keys.C, Keys.F };
