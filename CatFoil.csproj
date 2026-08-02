@@ -9,8 +9,8 @@
     <AssemblyName>CatFoil</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>assets\cat.ico</ApplicationIcon>
-    <Version>0.3.0</Version>
-    <FileVersion>0.3.0.0</FileVersion>
+    <Version>0.4.1</Version>
+    <FileVersion>0.4.1.0</FileVersion>
     <Company>Skordio</Company>
     <Product>CatFoil</Product>
     <Copyright>© 2026 Steven (Skordio)</Copyright>
@@ -19,6 +19,13 @@
   <ItemGroup>
     <!-- Embedded so the tray/overlay get the multi-size icon even as a single portable EXE. -->
     <EmbeddedResource Include="assets\cat.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Prototype spikes are their own projects on their own branches, but their
+         gitignored bin/obj survive a branch switch, and the default glob would
+         compile the generated .cs left in them. -->
+    <Compile Remove="prototypes/**" />
   </ItemGroup>
 
 </Project>

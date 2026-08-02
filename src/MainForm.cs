@@ -159,7 +159,7 @@ public sealed class MainForm : Form
     public void RefreshHotkey()
     {
         _hotkeyBadge.Visible = _settings.HotkeyEnabled;
-        _hotkeyBadge.SetParts(SettingsForm.ActiveHotkeyParts(_settings));
+        _hotkeyBadge.SetParts(HotkeyText.ActiveParts(_settings));
     }
 
     /// <summary>

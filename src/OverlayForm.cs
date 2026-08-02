@@ -10,9 +10,10 @@ namespace CatFoil;
 
 /// <summary>
 /// Small draggable topmost badge shown while the keyboard is locked. Never
-/// steals focus (WS_EX_NOACTIVATE). Its appearance is per-state: one look when
-/// no fullscreen app is foreground, another (or hidden) when one is. Rendered as
-/// a layered window so custom icons keep their own transparency with no halo.
+/// steals focus (WS_EX_NOACTIVATE). It has one look, and an
+/// <see cref="OverlayShowIn"/> saying whether it appears alongside a fullscreen
+/// app, only alongside one, or regardless. Rendered as a layered window so
+/// custom icons keep their own transparency with no halo.
 /// </summary>
 public sealed class OverlayForm : Form
 {
@@ -23,11 +24,21 @@ public sealed class OverlayForm : Form
 
     private const uint MONITOR_DEFAULTTONEAREST = 2;
 
+    // Re-asserting topmost (see UpdateVisibility).
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE     = 0x0001;
+    private const uint SWP_NOMOVE     = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
     // Layered-window compositing.
     private const byte AC_SRC_OVER = 0x00;
     private const byte AC_SRC_ALPHA = 0x01;
     private const int ULW_ALPHA = 0x02;
-    private const byte OverlayAlpha = 235;   // ~0.92 overall opacity, as before
+    // Fully opaque compositing: the badge's own translucency is baked into the
+    // bitmap by OverlayRenderer, which is the only way the settings preview can
+    // show it too — a preview is an ordinary control, with no layered window to
+    // apply a constant alpha. Applying it here as well would fade it twice.
+    private const byte OverlayAlpha = 255;
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
@@ -35,6 +46,8 @@ public sealed class OverlayForm : Form
     private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+        int x, int y, int cx, int cy, uint uFlags);
     [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
@@ -64,23 +77,25 @@ public sealed class OverlayForm : Form
     private bool _active;
     private string? _remainingText;
 
-    // Per-state appearance and the resolved bitmap for each (default or custom).
-    private OverlayStateSettings _normal = new();
-    private OverlayStateSettings _fullscreen = new() { Visible = false };
-    private Bitmap? _normalIcon;
-    private Bitmap? _fullscreenIcon;
-    private OverlayStateSettings _currentState = new();
-    private Bitmap? _currentIcon;
+    // The appearance and the bitmap it resolves to (default, gallery or custom).
+    private OverlayAppearance _appearance = new();
+    private OverlayShowIn _showIn = OverlayShowIn.ExceptFullscreen;
+    private Bitmap? _icon;
 
     // What the last RenderLayered() actually painted. The 1s poll has to run to
     // notice a fullscreen app appearing, but re-compositing a layered window is
     // a bitmap allocation plus a DWM update — far too expensive to repeat every
     // second for a badge that almost never changes. Render only on a real change.
-    private OverlayStateSettings? _paintedState;
+    private OverlayAppearance? _paintedState;
     private Bitmap? _paintedIcon;
     private Size _paintedSize;
     private string? _paintedText;
     private bool _paintedFlash;
+    // Tracked separately from _paintedFlash: the blocked window opens with the
+    // ring in its *off* phase, so without this the first paint after a blocked
+    // key sees nothing changed and the blocked opacity wouldn't appear until the
+    // first blink 120 ms later — a quarter of the effect, silently missing.
+    private bool _paintedBlocked;
 
     private bool _dragging;
     private bool _moved;
@@ -90,8 +105,13 @@ public sealed class OverlayForm : Form
     public event Action? OpenRequested;
     public event Action<Point>? PositionChanged;
 
-    public OverlayForm(Icon appIcon)
+    /// <summary>Which <see cref="OverlayItem"/> this badge is showing.</summary>
+    public string OverlayId { get; }
+
+    public OverlayForm(Icon appIcon, string overlayId)
     {
+        OverlayId = overlayId;
+
         using (var sized = new Icon(appIcon, 256, 256))
             _defaultIcon = sized.ToBitmap();
 
@@ -99,12 +119,9 @@ public sealed class OverlayForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        ClientSize = new Size(_normal.ClampedSize(), _normal.ClampedSize());
+        ClientSize = new Size(_appearance.ClampedSize(), _appearance.ClampedSize());
 
-        _normalIcon = _defaultIcon;
-        _fullscreenIcon = _defaultIcon;
-        _currentState = _normal;
-        _currentIcon = _defaultIcon;
+        _icon = _defaultIcon;
 
         MouseHover += (_, _) => ShowTip();
         MouseLeave += (_, _) => _tip.Hide(this);
@@ -138,17 +155,42 @@ public sealed class OverlayForm : Form
         }
     }
 
-    /// <summary>Applies the two per-state appearances and refreshes if active.</summary>
-    public void ApplyAppearance(OverlayStateSettings normal, OverlayStateSettings fullscreen)
+    /// <summary>Applies the badge's appearance and when it shows, and refreshes
+    /// if active.</summary>
+    public void ApplyAppearance(OverlayAppearance appearance, OverlayShowIn showIn)
     {
-        _normal = normal.Clone();
-        _fullscreen = fullscreen.Clone();
+        // Reload the image only when the setting that names it changed. This
+        // runs on *every* settings edit, and reading a file plus decoding a
+        // bitmap per tick of a size or opacity slider would be a real cost for
+        // a picture that hasn't moved. Imports always land under a fresh name,
+        // so a changed picture always looks like a changed path.
+        bool reload = _icon is null || IconDiffers(_appearance, appearance);
 
-        ReplaceIcon(ref _normalIcon, LoadIcon(_normal));
-        ReplaceIcon(ref _fullscreenIcon, LoadIcon(_fullscreen));
+        _appearance = appearance.Clone();
+        _showIn = showIn;
 
+        if (reload) ReplaceIcon(ref _icon, LoadIcon(_appearance));
+
+        // Size even while hidden. UpdateVisibility only resizes an active badge,
+        // so without this a badge that has never been shown still measures
+        // 64 px — and automatic placement, which centres on the badge, would
+        // centre on the wrong size.
+        if (!_active)
+        {
+            int size = _appearance.ClampedSize();
+            if (ClientSize.Width != size) ClientSize = new Size(size, size);
+        }
+
+        // The repaint check matches the appearance by reference and it was just
+        // replaced, so the next render can't skip the new one.
         if (_active) UpdateVisibility();
     }
+
+    private static bool IconDiffers(OverlayAppearance a, OverlayAppearance b) =>
+        a.IconSource != b.IconSource
+        || !string.Equals(a.CustomIconFile, b.CustomIconFile, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(a.GalleryIconId, b.GalleryIconId, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(a.IconColor, b.IconColor, StringComparison.OrdinalIgnoreCase);
 
     // Swap a state's bitmap, disposing the old one unless it's the shared default.
     private void ReplaceIcon(ref Bitmap? slot, Bitmap next)
@@ -157,28 +199,27 @@ public sealed class OverlayForm : Form
         slot = next;
     }
 
-    private Bitmap LoadIcon(OverlayStateSettings state)
-    {
-        if (!state.UseCustomIcon || string.IsNullOrWhiteSpace(state.CustomIconFile))
-            return _defaultIcon;
-        try
-        {
-            string path = Path.Combine(Settings.Directory, state.CustomIconFile);
-            if (!File.Exists(path)) return _defaultIcon;
-            // Copy into memory so the file on disk isn't locked open.
-            using var fromFile = new Bitmap(path);
-            return new Bitmap(fromFile);
-        }
-        catch
-        {
-            return _defaultIcon;   // unreadable/corrupt file — fall back
-        }
-    }
+    private Bitmap LoadIcon(OverlayAppearance appearance) => OverlayIcon.Load(appearance, _defaultIcon);
 
-    public void ApplySavedPosition(Point? saved)
+    /// <summary>
+    /// Places the badge where the user last dragged it, or — for one that has
+    /// never been moved — three quarters of the way across the screen and three
+    /// quarters of the way up it: clear of the middle, but not tucked so far
+    /// into a corner that it goes unnoticed. Badges after the first step down
+    /// from there by <paramref name="cascadeIndex"/> so a newly added overlay
+    /// doesn't spawn on top of an existing one.
+    /// </summary>
+    public void ApplySavedPosition(Point? saved, int cascadeIndex = 0)
     {
+        const int CascadeGap = 24;
+        // Stepped by this badge's own height, not a constant: a fixed step only
+        // clears a badge no taller than itself, and the size range goes to 256.
+        // At the default 64 px this is the 88 px it has always been.
+        int step = Height + CascadeGap;
         var workArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
-        Point p = saved ?? new Point(workArea.Right - Width - 16, workArea.Top + 16);
+        Point p = saved ?? new Point(
+            workArea.Left + workArea.Width * 3 / 4 - Width / 2,
+            workArea.Top + workArea.Height / 4 - Height / 2 + cascadeIndex * step);
         Location = ClampToScreen(p);
     }
 
@@ -232,23 +273,24 @@ public sealed class OverlayForm : Form
     {
         if (!_active) return;
 
-        var state = ForegroundIsFullscreen() ? _fullscreen : _normal;
-        Bitmap icon = state == _fullscreen ? (_fullscreenIcon ?? _defaultIcon) : (_normalIcon ?? _defaultIcon);
+        bool show = _showIn switch
+        {
+            OverlayShowIn.Always => true,
+            OverlayShowIn.OnlyFullscreen => ForegroundIsFullscreen(),
+            _ => !ForegroundIsFullscreen(),
+        };
 
-        if (!state.Visible)
+        if (!show)
         {
             if (Visible)
             {
                 Hide();
-                _paintedState = null;   // force a repaint if this state comes back
+                _paintedState = null;   // force a repaint when it comes back
             }
             return;
         }
 
-        _currentState = state;
-        _currentIcon = icon;
-
-        int size = state.ClampedSize();
+        int size = _appearance.ClampedSize();
         if (ClientSize.Width != size)
         {
             ClientSize = new Size(size, size);
@@ -256,6 +298,16 @@ public sealed class OverlayForm : Form
         }
 
         if (!Visible) Show();
+        else
+        {
+            // Being topmost isn't a place, it's a band — an app that raises
+            // itself topmost later (MPC-HC fullscreen, for one) lands ABOVE the
+            // badge and stays there, which both hides the "keyboard is locked"
+            // signal and defeats the blocked-key failsafe (the badge still
+            // counts as Visible). Climb back on every poll tick.
+            SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
         RenderIfChanged();
     }
 
@@ -263,16 +315,21 @@ public sealed class OverlayForm : Form
     // badge actually shows has changed since the last paint.
     private void RenderIfChanged()
     {
-        bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
-        if (ReferenceEquals(_paintedState, _currentState)
-            && ReferenceEquals(_paintedIcon, _currentIcon)
+        // The ring blinks; the blocked state is held for the whole window. Both
+        // are derived here and passed down, so the two can't drift apart.
+        bool blocked = _flashTimer.Enabled;
+        bool flashOn = blocked && _flashTicks % 2 == 1;
+
+        if (ReferenceEquals(_paintedState, _appearance)
+            && ReferenceEquals(_paintedIcon, _icon)
             && _paintedSize == ClientSize
             && _paintedText == _remainingText
-            && _paintedFlash == flashOn)
+            && _paintedFlash == flashOn
+            && _paintedBlocked == blocked)
         {
             return;
         }
-        RenderLayered();
+        RenderLayered(flashOn, blocked);
     }
 
     // True when the foreground window belongs to CatFoil itself (Settings,
@@ -307,29 +364,29 @@ public sealed class OverlayForm : Form
     }
 
     // Paint the badge into a 32bpp ARGB bitmap and push it to the layered window.
-    private void RenderLayered()
+    private void RenderLayered(bool flashOn, bool blocked)
     {
-        if (!IsHandleCreated || _currentIcon is null) return;
+        if (!IsHandleCreated || _icon is null) return;
 
         int w = ClientSize.Width, h = ClientSize.Height;
         if (w <= 0 || h <= 0) return;
-
-        bool flashOn = _flashTimer.Enabled && _flashTicks % 2 == 1;
 
         using var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
         {
             g.Clear(Color.Transparent);
-            OverlayRenderer.Draw(g, new Rectangle(0, 0, w, h), _currentState, _currentIcon, _remainingText, flashOn);
+            OverlayRenderer.Draw(g, new Rectangle(0, 0, w, h), _appearance, _icon,
+                _remainingText, flashOn, blocked);
         }
 
         // Remember exactly what this paint represents, so RenderIfChanged can skip
         // the next poll tick when nothing moved.
-        _paintedState = _currentState;
-        _paintedIcon = _currentIcon;
+        _paintedState = _appearance;
+        _paintedIcon = _icon;
         _paintedSize = ClientSize;
         _paintedText = _remainingText;
         _paintedFlash = flashOn;
+        _paintedBlocked = blocked;
 
         IntPtr screenDc = GetDC(IntPtr.Zero);
         IntPtr memDc = CreateCompatibleDC(screenDc);
@@ -391,8 +448,7 @@ public sealed class OverlayForm : Form
     {
         if (disposing)
         {
-            ReplaceIcon(ref _normalIcon, _defaultIcon);
-            ReplaceIcon(ref _fullscreenIcon, _defaultIcon);
+            ReplaceIcon(ref _icon, _defaultIcon);
             _defaultIcon.Dispose();
             _tip.Dispose();
             _poll.Dispose();

@@ -6,8 +6,10 @@
 ; Install mode is the user's choice (PrivilegesRequiredOverridesAllowed=dialog):
 ;   * "Install for me only"  → per-user, no admin, lands in %LOCALAPPDATA%\Programs\CatFoil.
 ;   * "Install for all users" → per-machine, triggers UAC, lands in C:\Program Files\CatFoil.
-; PrivilegesRequired=lowest makes per-user the no-prompt default; a silent install
-; (/VERYSILENT) always takes the per-user path. {autopf}, {group}, {autodesktop}
+; PrivilegesRequired=lowest makes per-user the no-prompt default. A TRULY silent
+; install is "/VERYSILENT /CURRENTUSER": /VERYSILENT alone still shows the
+; install-mode dialog above (verified 2026-07-27), because the dialog is asked
+; before the silent flag is honoured. {autopf}, {group}, {autodesktop}
 ; all resolve to the matching per-user or common location automatically.
 ; The app self-elevates at runtime only when it needs to block elevated windows,
 ; so even a per-user install can do everything a per-machine one can.
@@ -16,7 +18,7 @@
 ; it untouched and a reinstall/upgrade keeps every setting.
 ;
 ; Microsoft Store readiness (MSI/EXE submission path): the payload is bundled
-; (offline install) and Inno supports silent install (/VERYSILENT) — both are
+; (offline install) and Inno supports silent install (/VERYSILENT /CURRENTUSER) — both are
 ; Store requirements. Before submitting, the setup EXE and the bundled CatFoil.exe
 ; must be code-signed with a cert chaining to a Microsoft-Trusted-Root CA
 ; (add a [Setup] SignTool= directive + sign the payload during publish).
@@ -89,8 +91,13 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 ; an elevated scheduled task), so the uninstaller must ask it to deregister —
 ; this runs first, before files are removed, and waits for the EXE to finish.
 ; The cleanup is path-guarded in the app: it only deletes registrations that
-; point at this install's EXE, leaving e.g. a portable copy's alone. The
-; elevated task is deletable even unelevated because its author is the user.
+; point at this install's EXE, leaving e.g. a portable copy's alone.
+; A per-user uninstall runs UNELEVATED, and a task created with
+; RunLevel=HighestAvailable is normally deletable only by Administrators — an
+; admin's everyday token has that group deny-only, so the delete was denied and
+; the task outlived the uninstall. The app therefore stamps the task with a
+; descriptor granting the user's own SID delete rights (Startup.BuildTaskSddl),
+; and repairs older tasks the next time it starts elevated.
 ; Known limitation: after a per-machine install, an uninstall run by a
 ; DIFFERENT admin account can't reach the original user's HKCU/task — those
 ; survive; unavoidable without enumerating users.

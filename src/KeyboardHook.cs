@@ -35,6 +35,9 @@ public sealed class KeyboardHook : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr GetModuleHandle(string lpModuleName);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
     // Keep a strong reference to the delegate so the GC never collects it
     // while the hook is still installed (a classic crash-causing bug).
     private readonly LowLevelKeyboardProc _proc;
@@ -44,6 +47,11 @@ public sealed class KeyboardHook : IDisposable
     // Windows (GetAsyncKeyState): swallowed key-downs never reach the OS key
     // state tables, so while locked it reports held modifiers as "up".
     private bool _lCtrl, _rCtrl, _lAlt, _rAlt, _lShift, _rShift;
+
+    // When the hook last saw an event for a key it tracks (modifier or chord
+    // key). Guards ResyncModifiers: tracked state touched moments ago may be a
+    // genuinely held key, not a stale one.
+    private int _lastTrackedKeyTick;
 
     public bool IsLocked { get; private set; }
 
@@ -86,6 +94,9 @@ public sealed class KeyboardHook : IDisposable
     public KeyboardHook()
     {
         _proc = HookCallback;
+        // Seed with a real tick value (see _lastToggleTick in TrayAppContext):
+        // left at 0 the quiet-period test misbehaves once TickCount wraps.
+        _lastTrackedKeyTick = Environment.TickCount;
     }
 
     public bool Install(out int win32Error)
@@ -154,11 +165,12 @@ public sealed class KeyboardHook : IDisposable
             if (IsLocked && isDown)
             {
                 bool unlock = MatchesUnlockCombo(vk);
+                bool gesture = !unlock && PartOfUnlockGesture(vk);
                 if (HookLog.Enabled)
-                    HookLog.Record($"DOWN {vk} (vk={(int)vk}) locked=True -> {(unlock ? "UNLOCK" : "BLOCKED")} (swallow)");
+                    HookLog.Record($"DOWN {vk} (vk={(int)vk}) locked=True -> {(unlock ? "UNLOCK" : gesture ? "GESTURE (no cue)" : "BLOCKED")} (swallow)");
                 if (unlock)
                     UnlockComboPressed?.Invoke();
-                else
+                else if (!gesture)
                     BlockedKeyPress?.Invoke();
 
                 // Returning 1 swallows the keystroke. The mouse is untouched
@@ -189,7 +201,9 @@ public sealed class KeyboardHook : IDisposable
             case Keys.RMenu:       _rAlt   = down; break;
             case Keys.LShiftKey:   _lShift = down; break;
             case Keys.RShiftKey:   _rShift = down; break;
+            default: return;
         }
+        _lastTrackedKeyTick = Environment.TickCount;
     }
 
     // A chord fires exactly once: on the key-down that completes it while the
@@ -198,6 +212,7 @@ public sealed class KeyboardHook : IDisposable
     {
         int idx = Array.IndexOf(_chordKeys, vk);
         if (idx < 0) return false;
+        _lastTrackedKeyTick = Environment.TickCount;
 
         bool wasDown = _chordDown[idx];
         _chordDown[idx] = true;
@@ -214,8 +229,77 @@ public sealed class KeyboardHook : IDisposable
     private void ReleaseChordKey(Keys vk)
     {
         int idx = Array.IndexOf(_chordKeys, vk);
-        if (idx >= 0) _chordDown[idx] = false;
+        if (idx < 0) return;
+        _chordDown[idx] = false;
+        _lastTrackedKeyTick = Environment.TickCount;
     }
+
+    // ---------------------------------------------------------------
+    // Stale-state resync (the watchdog calls this every minute)
+    // ---------------------------------------------------------------
+
+    // How long the tracked keys must have been event-free before ResyncModifiers
+    // will trust GetAsyncKeyState over them. A key genuinely held keeps
+    // auto-repeating key-downs through the hook, so a real hold refreshes the
+    // tick and is never touched; 5s is far beyond any repeat gap.
+    private const int ResyncQuietMs = 5000;
+
+    /// <summary>
+    /// Clears tracked keys that Windows says are no longer held. The hook
+    /// misses key-UPs whenever input goes where it can't see — the secure
+    /// desktop (Ctrl+Alt+Del, UAC, Win+L) or the dead window before a
+    /// silently-dropped hook is re-installed — and a stale "down" modifier
+    /// jams the unlock combo (non-combo modifiers must be up to match) while
+    /// blocking carries on working.
+    ///
+    /// GetAsyncKeyState is safe here in ONE direction only: it can falsely
+    /// report a swallowed-but-held key as up, but never reports a released key
+    /// as down. So this only ever clears, and only after a quiet period long
+    /// enough that a genuinely held key (which auto-repeats through the hook)
+    /// would have refreshed <see cref="_lastTrackedKeyTick"/>.
+    /// </summary>
+    public void ResyncModifiers()
+    {
+        if (unchecked(Environment.TickCount - _lastTrackedKeyTick) < ResyncQuietMs) return;
+
+        ClearIfReleased(ref _lCtrl,  Keys.LControlKey);
+        ClearIfReleased(ref _rCtrl,  Keys.RControlKey);
+        ClearIfReleased(ref _lAlt,   Keys.LMenu);
+        ClearIfReleased(ref _rAlt,   Keys.RMenu);
+        ClearIfReleased(ref _lShift, Keys.LShiftKey);
+        ClearIfReleased(ref _rShift, Keys.RShiftKey);
+
+        for (int i = 0; i < _chordKeys.Length; i++)
+            ClearIfReleased(ref _chordDown[i], _chordKeys[i]);
+    }
+
+    private static void ClearIfReleased(ref bool tracked, Keys vk)
+    {
+        if (tracked && (GetAsyncKeyState((int)vk) & 0x8000) == 0)
+            tracked = false;
+    }
+
+    // Nobody hits both keys of Alt+G in the same instant: Alt lands first, and
+    // treating it as a blocked key made the unlock gesture itself beep, flash,
+    // and count toward the blocked-keys stat. Keys the user presses on the way
+    // INTO the combo or chord are still swallowed — only the cue is skipped. A
+    // cat parked exactly on Alt gets no cue either; acceptable, since the cue
+    // exists to guide the human and letters/space still fire it.
+    private bool PartOfUnlockGesture(Keys vk)
+    {
+        if (IsRequiredModifier(UnlockCombo, vk)) return true;
+        if (_chordKeys.Length == 0) return false;
+        return Array.IndexOf(_chordKeys, vk) >= 0 || IsRequiredModifier(ChordModifiers, vk);
+    }
+
+    // Keys.None has no modifier flags set, so a disabled combo matches nothing.
+    private static bool IsRequiredModifier(Keys combo, Keys vk) => vk switch
+    {
+        Keys.LControlKey or Keys.RControlKey => (combo & Keys.Control) != 0,
+        Keys.LMenu or Keys.RMenu             => (combo & Keys.Alt) != 0,
+        Keys.LShiftKey or Keys.RShiftKey     => (combo & Keys.Shift) != 0,
+        _ => false,
+    };
 
     private bool MatchesUnlockCombo(Keys vk)
     {

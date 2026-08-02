@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -19,7 +21,8 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly KeyboardHook _hook = new();
     private readonly HotkeyManager _hotkey = new();
     private readonly MainForm _mainForm;
-    private readonly OverlayForm _overlay;
+    // One live badge per configured overlay, reconciled by SyncOverlays.
+    private readonly List<OverlayForm> _overlayForms = new();
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _lockMenuItem;
     // Periodically re-arms the hotkey and hook: Windows quietly drops both after
@@ -38,6 +41,12 @@ public sealed class TrayAppContext : ApplicationContext
     private int _lastToggleTick;
     private int _lockStartTick;
     private int _lastBlockedSoundTick;
+    // True while the settings window is listening for a new hotkey binding.
+    private bool _hotkeyCapture;
+    // What the hotkey and startup registrations were last built from, so a live
+    // edit that touches neither doesn't redo them. See ApplyLiveEdit.
+    private (Keys, bool, bool, Keys, string) _appliedHotkeyState;
+    private (bool, bool) _appliedStartupState;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
@@ -54,15 +63,7 @@ public sealed class TrayAppContext : ApplicationContext
         _mainForm.SettingsRequested += ShowSettings;
         _mainForm.ExitRequested += ExitApp;
 
-        _overlay = new OverlayForm(_appIcon);
-        _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
-        _overlay.ApplySavedPosition(_settings.OverlayPosition);
-        _overlay.OpenRequested += ShowMainWindow;
-        _overlay.PositionChanged += p =>
-        {
-            _settings.OverlayPosition = p;
-            _settings.Save();
-        };
+        SyncOverlays();
 
         // Hook events fire mid-hook; defer the real work so the hook returns fast.
         _hook.BlockedKeyPress += () => _mainForm.BeginInvoke(OnBlockedKey);
@@ -78,6 +79,14 @@ public sealed class TrayAppContext : ApplicationContext
         _hotkey.HotkeyPressed += ToggleLock;
         ApplyHotkeySettings();
         ApplyStartupSettings();
+        // Installs from before 0.4.2 registered the elevated logon task with a
+        // descriptor only Administrators can delete, so an unelevated uninstall
+        // strands it. Repairing needs elevation — which that very task hands us
+        // at logon — and spawns schtasks, so it stays off the startup path.
+        System.Threading.Tasks.Task.Run(Startup.RepairTaskSecurity);
+        // Seed the baselines ApplyLiveEdit compares against.
+        _appliedHotkeyState = HotkeyState();
+        _appliedStartupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);
 
         _timedTimer.Tick += (_, _) => TimedTick();
 
@@ -161,9 +170,9 @@ public sealed class TrayAppContext : ApplicationContext
             _lockStartTick = Environment.TickCount;
             _settings.StatLockSessions++;
             _settings.Save();
-            if (_settings.SoundOnLockUnlock) Sounds.Lock();
+            Sounds.Lock(_settings);
             _mainForm.SetLockedUi(true);
-            _overlay.SetActive(_settings.ShowOverlay);
+            ApplyOverlayActivation();
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
             _lockMenuItem.Text = "Unlock Keyboard";
         }
@@ -173,9 +182,9 @@ public sealed class TrayAppContext : ApplicationContext
             _timedSecondsLeft = 0;
             _hook.Unlock();
             FlushLockStats();
-            if (_settings.SoundOnLockUnlock) Sounds.Unlock();
-            _overlay.SetActive(false);
-            _overlay.SetRemaining(null);
+            Sounds.Unlock(_settings);
+            ApplyOverlayActivation();   // the hook is already unlocked, so all badges go away
+            SetOverlayRemaining(null);
             _mainForm.SetLockedUi(false);
             _tray.Text = "CatFoil — keyboard active";
             _lockMenuItem.Text = "Lock Keyboard";
@@ -239,7 +248,7 @@ public sealed class TrayAppContext : ApplicationContext
     {
         var remaining = TimeSpan.FromSeconds(_timedSecondsLeft);
         _mainForm.ShowLockCountdown(remaining);
-        _overlay.SetRemaining(remaining);
+        SetOverlayRemaining(remaining);
     }
 
     private void OnBlockedKey()
@@ -252,22 +261,104 @@ public sealed class TrayAppContext : ApplicationContext
         _settings.StatBlockedKeys++;
 
         // The window is the unlock failsafe: bring it back if the user has no
-        // visible way into CatFoil (or it's sitting minimized).
-        if ((!_mainForm.Visible && !_overlay.Visible) || _mainForm.WindowState == FormWindowState.Minimized)
+        // visible way into CatFoil (or it's sitting minimized). With several
+        // overlays configured, any one of them still on screen is a way in.
+        if ((!_mainForm.Visible && !_overlayForms.Any(f => f.Visible))
+            || _mainForm.WindowState == FormWindowState.Minimized)
+        {
             ShowMainWindow();
+        }
 
-        _overlay.FlashBlockedKey();
+        foreach (OverlayForm form in _overlayForms) form.FlashBlockedKey();
 
         // Throttle the blocked-key sound so a held key doesn't machine-gun it.
-        if (_settings.SoundOnBlockedKey)
+        if (_settings.BlockedSound.Enabled)
         {
             int now = Environment.TickCount;
             if (unchecked(now - _lastBlockedSoundTick) >= BlockedSoundThrottleMs)
             {
                 _lastBlockedSoundTick = now;
-                Sounds.Blocked();
+                Sounds.Blocked(_settings);
             }
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Overlays
+    // ---------------------------------------------------------------
+
+    /// <summary>
+    /// Brings the live badges in line with the configured overlays: closes the
+    /// ones whose item is gone, creates the ones that are new, and pushes the
+    /// current appearance to the rest. Safe to call any time settings change —
+    /// it is how an edit reaches the screen.
+    /// </summary>
+    private void SyncOverlays()
+    {
+        List<OverlayItem> items = _settings.EnsureOverlays();
+
+        for (int i = _overlayForms.Count - 1; i >= 0; i--)
+        {
+            OverlayForm form = _overlayForms[i];
+            if (items.Any(item => item.Id == form.OverlayId)) continue;
+            _overlayForms.RemoveAt(i);
+            form.SetActive(false);
+            form.Close();
+            form.Dispose();
+        }
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            OverlayItem item = items[i];
+            OverlayForm? form = _overlayForms.FirstOrDefault(f => f.OverlayId == item.Id);
+            bool created = form is null;
+            form ??= CreateOverlay(item);
+
+            form.ApplyAppearance(item.Appearance, item.ShowIn);
+            // Positioned only after the appearance is on, and only for a badge
+            // that is new: automatic placement centres on the badge's size, and
+            // before ApplyAppearance that is still the constructor's default 64
+            // rather than this item's.
+            if (created) form.ApplySavedPosition(item.Position, cascadeIndex: i);
+        }
+
+        ApplyOverlayActivation();
+    }
+
+    private OverlayForm CreateOverlay(OverlayItem item)
+    {
+        var form = new OverlayForm(_appIcon, item.Id);
+        form.OpenRequested += ShowMainWindow;
+        // Look the item up again on each drag rather than capturing it: the
+        // settings object outlives any particular OverlayItem instance.
+        form.PositionChanged += p => OnOverlayMoved(item.Id, p);
+        _overlayForms.Add(form);
+        return form;
+    }
+
+    private void OnOverlayMoved(string overlayId, Point position)
+    {
+        OverlayItem? item = _settings.Overlays.FirstOrDefault(o => o.Id == overlayId);
+        if (item is null) return;
+        item.Position = position;
+        _settings.Save();
+    }
+
+    // A badge is on screen only while the keyboard is locked, the master
+    // "show overlay" switch is on, and that particular overlay is enabled.
+    private void ApplyOverlayActivation()
+    {
+        bool show = _hook.IsLocked && _settings.ShowOverlay;
+        foreach (OverlayForm form in _overlayForms)
+        {
+            OverlayItem? item = _settings.Overlays.FirstOrDefault(o => o.Id == form.OverlayId);
+            form.SetActive(show && item is { Enabled: true });
+        }
+    }
+
+    private void SetOverlayRemaining(TimeSpan? remaining)
+    {
+        foreach (OverlayForm form in _overlayForms) form.SetRemaining(remaining);
     }
 
     // ---------------------------------------------------------------
@@ -311,19 +402,8 @@ public sealed class TrayAppContext : ApplicationContext
 
     private void ShowStats()
     {
-        using var stats = new StatsForm(_settings, _appIcon, InProgressLockSeconds, OnStatsReset);
-
-        // The owner may be hidden (closed to tray) or minimized; CenterParent
-        // against an invisible window can land anywhere, so center on screen.
-        if (_mainForm.Visible && _mainForm.WindowState != FormWindowState.Minimized)
-        {
-            stats.ShowDialog(_mainForm);
-        }
-        else
-        {
-            stats.StartPosition = FormStartPosition.CenterScreen;
-            stats.ShowDialog();
-        }
+        ShowSettings();
+        _settingsForm!.SelectPage<StatisticsPage>();
     }
 
     private void ShowWelcome()
@@ -343,24 +423,78 @@ public sealed class TrayAppContext : ApplicationContext
             return;
         }
 
-        _settingsForm = new SettingsForm(_settings) { Icon = _appIcon };
-        _settingsForm.SettingsSaved += () =>
-        {
-            ApplyHotkeySettings();
-            ApplyStartupSettings();
-            _mainForm.RefreshHotkey();
-            _overlay.ApplyAppearance(_settings.OverlayNormal, _settings.OverlayFullscreen);
-            if (_hook.IsLocked)
-                _overlay.SetActive(_settings.ShowOverlay);
-            ApplyIdleTimer();
-        };
+        _settingsForm = new SettingsForm(_settings, InProgressLockSeconds, OnStatsReset) { Icon = _appIcon };
+        _settingsForm.SettingsSaved += ApplyLiveEdit;
         // The elevated relaunch is already running; quit so it can take over.
         _settingsForm.RestartElevatedRequested += ExitApp;
+        _settingsForm.HotkeyCaptureChanged += OnHotkeyCaptureChanged;
         _settingsForm.Show();
+    }
+
+    /// <summary>
+    /// Applies a settings edit to the running app.
+    ///
+    /// Immediate-apply raises this on <em>every</em> edit, which since the
+    /// overlay and sound editors arrived means every tick of a slider drag and
+    /// every keystroke in a name box. Re-registering the hotkey and rewriting
+    /// the HKCU Run key at that rate is pure waste — and when the hotkey is
+    /// already owned by another app, it would put a "could not register" balloon
+    /// on screen per tick. So those two only run when something they actually
+    /// depend on has changed; the rest is cheap enough to run every time.
+    /// </summary>
+    private void ApplyLiveEdit()
+    {
+        var hotkeyState = HotkeyState();
+        if (hotkeyState != _appliedHotkeyState)
+        {
+            _appliedHotkeyState = hotkeyState;
+            ApplyHotkeySettings();
+            _mainForm.RefreshHotkey();
+        }
+
+        var startupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);
+        if (startupState != _appliedStartupState)
+        {
+            _appliedStartupState = startupState;
+            ApplyStartupSettings();
+        }
+
+        SyncOverlays();
+        ApplyIdleTimer();
+    }
+
+    // Everything ApplyHotkeySettings reads, as a comparable value.
+    private (Keys, bool, bool, Keys, string) HotkeyState() => (
+        _settings.Hotkey,
+        _settings.HotkeyEnabled,
+        _settings.UseChordHotkey,
+        _settings.ChordModifiers,
+        string.Join(",", _settings.ChordKeys ?? Array.Empty<Keys>()));
+
+    /// <summary>
+    /// Stop and resume listening for the hotkey while the settings window binds
+    /// a new one. Settings applies edits immediately, so without this the combo
+    /// the user just bound is live again on the next keystroke — and pressing it
+    /// to try another binding would toggle the lock instead of reaching the box.
+    /// </summary>
+    private void OnHotkeyCaptureChanged(bool capturing)
+    {
+        _hotkeyCapture = capturing;
+        ApplyHotkeySettings(announceFailure: false);
     }
 
     private void ApplyHotkeySettings(bool announceFailure = true)
     {
+        // Binding a new hotkey: nothing should be listening. Guarding here
+        // rather than at the call sites covers the watchdog and the settings
+        // window's live-apply, which both land in here every few seconds.
+        if (_hotkeyCapture)
+        {
+            _hotkey.Unregister();
+            _hook.SetChordKeys(Array.Empty<Keys>());
+            return;
+        }
+
         // Chord mode: our hook detects the combo in both lock states and
         // RegisterHotKey is retired (it can't express multi-key chords).
         if (_settings.HotkeyEnabled && _settings.UseChordHotkey && _settings.ChordKeys.Length >= 2)
@@ -379,7 +513,7 @@ public sealed class TrayAppContext : ApplicationContext
             if (!_hotkey.Register(_settings.Hotkey) && announceFailure)
             {
                 _tray?.ShowBalloonTip(3000, "CatFoil",
-                    "Could not register the hotkey " + SettingsForm.FormatHotkey(_settings.Hotkey) +
+                    "Could not register the hotkey " + HotkeyText.Format(_settings.Hotkey) +
                     " — another app may already be using it.", ToolTipIcon.Warning);
             }
         }
@@ -411,6 +545,11 @@ public sealed class TrayAppContext : ApplicationContext
         // state where a silently-dropped hook actually leaks keys unrepaired
         // for the whole session; this bounds that exposure to one tick.
         _hook.Reinstall(out _);
+
+        // Drop tracked modifier/chord state Windows says is stale — key-UPs
+        // missed on the secure desktop (Ctrl+Alt+Del, UAC, Win+L) or during a
+        // dropped-hook window otherwise jam the unlock combo permanently.
+        _hook.ResyncModifiers();
 
         if (_hook.IsLocked)
             // Checkpoint the running session's stats each tick so a crash or
@@ -458,8 +597,11 @@ public sealed class TrayAppContext : ApplicationContext
         _tray.Visible = false;
         _hotkey.Dispose();
         _hook.Dispose();
+        // MCI handles are process-wide and hold the audio files open.
+        AudioPlayer.CloseAll();
         _mainForm.AllowClose = true;
-        _overlay.Close();
+        foreach (OverlayForm form in _overlayForms) form.Close();
+        _overlayForms.Clear();
         _mainForm.Close();
         ExitThread();
     }

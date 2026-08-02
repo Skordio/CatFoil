@@ -29,7 +29,7 @@ public sealed class WelcomeForm : Form
         Font = FormFont;
         BackColor = Color.FromArgb(245, 245, 245);
 
-        string hotkey = string.Join(" + ", SettingsForm.ActiveHotkeyParts(settings));
+        string hotkey = string.Join(" + ", HotkeyText.ActiveParts(settings));
 
         var flow = new FlowLayoutPanel
         {
@@ -57,7 +57,7 @@ public sealed class WelcomeForm : Form
         AddHeader(flow, "The cat badge");
         AddBody(flow,
             "While locked, a small cat badge floats on your screen as a reminder. Drag it " +
-            "anywhere you like; click it to open CatFoil. It hides itself during fullscreen apps.");
+            "anywhere you like; click it to open CatFoil. By default it hides itself during fullscreen apps.");
 
         AddHeader(flow, "The tray icon");
         AddBody(flow,

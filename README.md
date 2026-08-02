@@ -6,7 +6,7 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 
 - **One-click lock** from the main window, the tray menu, or a global hotkey (default **Alt+G** — rebindable, and optionally a multi-key chord like Alt + C + F).
 - **Lives in the system tray** with a cat icon; closing the window hides it to the tray instead of exiting.
-- **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. It stays out of the way of fullscreen apps (videos, games) and reappears afterwards.
+- **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. By default it stays out of the way of fullscreen apps (videos, games) and reappears afterwards — or you can have it show only over fullscreen apps, or always.
 - **Blocked-key feedback**: pressing a key while locked flashes the overlay badge red, and restores the main window if you'd otherwise have no way back in.
 - **Timed lock** ("Lock for…" in the tray menu) that auto-unlocks after 5/15/30/60 minutes, and optional **auto-lock** after a stretch of no keyboard or mouse activity.
 - **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay appearance, auto-lock, hide-to-tray, start hidden, and start with Windows (a registry Run entry the app manages itself).
@@ -74,7 +74,8 @@ To build the distributable artifacts, install
 All three publish the same self-contained single-file EXE (version comes from `<Version>` in
 `CatFoil.csproj`); `build-release.ps1` publishes once and emits both the portable EXE and the
 installer, so they're guaranteed to be the same binary. The installer (`installer\CatFoil.iss`)
-is offline and supports silent install (`/VERYSILENT`), so it's ready for the Microsoft Store's
+is offline and supports silent install (`/VERYSILENT /CURRENTUSER` — `/VERYSILENT` on its own
+still shows the install-mode dialog), so it's ready for the Microsoft Store's
 MSI/EXE submission path — that path additionally requires code-signing the setup and payload with
 a Microsoft-Trusted-Root cert.
 
