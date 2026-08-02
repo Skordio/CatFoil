@@ -36,8 +36,9 @@ The central lock/unlock surface. Two visual states:
 
 Persistent controls:
 - **Lock/Unlock Keyboard** button (docked bottom, large) — raises `ToggleRequested`.
-- **Exit** button (top-left, soft red tint) — raises `ExitRequested`.
-- **Settings** button (top-left, next to Exit) — raises `SettingsRequested`.
+- **Settings** button (top-left) — raises `SettingsRequested`. (The red Exit
+  button that sat beside it was removed 2026-08-02 — quitting is a tray-menu
+  action, not an everyday one.)
 - **Hotkey badge** (bottom-left, above the lock button) — a custom-drawn control
   (`HotkeyBadge`) rendering the active hotkey as 3D keycaps joined by "+". Hidden
   when the hotkey is disabled.

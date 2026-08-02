@@ -12,7 +12,6 @@ public sealed class MainForm : Form
     private readonly Label _status = new();
     private readonly Button _toggle = new();
     private readonly Button _settingsButton = new();
-    private readonly Button _exitButton = new();
     private readonly HotkeyBadge _hotkeyBadge = new();
     private readonly ToolTip _tip = new();
     private bool _locked;
@@ -37,9 +36,6 @@ public sealed class MainForm : Form
 
     /// <summary>The Settings button was clicked; TrayAppContext opens the settings window.</summary>
     public event Action? SettingsRequested;
-
-    /// <summary>The Exit button was clicked; TrayAppContext shuts the app down.</summary>
-    public event Action? ExitRequested;
 
     /// <summary>Set on real exit so closing stops hiding to the tray.</summary>
     public bool AllowClose { get; set; }
@@ -73,19 +69,12 @@ public sealed class MainForm : Form
         // Stop the button from grabbing keyboard focus / space-bar activation.
         _toggle.TabStop = false;
 
-        // --- Exit + Settings buttons (top-left) ---
-        _exitButton.Text = "Exit";
-        _exitButton.Size = new Size(104, 40);
-        _exitButton.Location = new Point(12, 10);
-        _exitButton.Font = ButtonFont;
-        _exitButton.BackColor = Color.FromArgb(250, 228, 226);   // soft red tint
-        _exitButton.ForeColor = Color.FromArgb(140, 35, 35);
-        _exitButton.TabStop = false;
-        _exitButton.Click += (_, _) => ExitRequested?.Invoke();
-
+        // --- Settings button (top-left) ---
+        // Exit lives in the tray menu only: an always-visible red Exit next to
+        // Settings read as an equal, everyday action, which quitting is not.
         _settingsButton.Text = "Settings";
         _settingsButton.Size = new Size(104, 40);
-        _settingsButton.Location = new Point(12 + 104 + 8, 10);
+        _settingsButton.Location = new Point(12, 10);
         _settingsButton.Font = ButtonFont;
         _settingsButton.TabStop = false;
         _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
@@ -97,7 +86,6 @@ public sealed class MainForm : Form
         RefreshHotkey();
 
         Controls.Add(_hotkeyBadge);      // low indexes = topmost, above the docked label
-        Controls.Add(_exitButton);
         Controls.Add(_settingsButton);
         Controls.Add(_status);           // Fill gets the space left over by the docked controls
         Controls.Add(_toggle);
