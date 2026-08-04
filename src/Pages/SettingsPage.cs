@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace CatFoil;
 
 /// <summary>
-/// Base for the panes hosted by <see cref="SettingsForm"/>.
+/// Base for the panes hosted by <see cref="SettingsShell"/>.
 ///
 /// Content is a single auto-sizing column, so adding a setting means appending
 /// a row — nothing below it has to be re-measured the way every control in the
@@ -30,6 +30,21 @@ internal abstract class SettingsPage : UserControl
 
     /// <summary>Name shown in the navigation list and the page header.</summary>
     public abstract string Title { get; }
+
+    /// <summary>
+    /// The shell this page is parented under, or null before first show. Walks
+    /// the parent chain rather than <see cref="Control.FindForm"/>: the shell is
+    /// a UserControl, so the form it sits in isn't the settings UI any more.
+    /// </summary>
+    protected SettingsShell? Shell
+    {
+        get
+        {
+            for (Control? c = Parent; c is not null; c = c.Parent)
+                if (c is SettingsShell shell) return shell;
+            return null;
+        }
+    }
 
     protected SettingsPage(SettingsSession session)
     {

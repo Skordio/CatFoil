@@ -58,7 +58,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         {
             Session.Apply(_ => _item.Name = name.Text);
             // The breadcrumb is built from Title, which is this name.
-            (FindForm() as SettingsForm)?.RefreshSubPageTitle();
+            Shell?.RefreshSubPageTitle();
         };
         AddRow(name);
 

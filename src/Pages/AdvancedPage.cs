@@ -96,7 +96,7 @@ internal sealed class AdvancedPage : SettingsPage
         bool mainVisible = false;
         foreach (Form form in Application.OpenForms)
             if (form is MainForm { Visible: true }) mainVisible = true;
-        string restore = RestoreUi.Encode(mainVisible, (FindForm() as SettingsForm)?.CurrentPageTitle ?? Title);
+        string restore = RestoreUi.Encode(mainVisible, Shell?.CurrentPageTitle ?? Title);
         if (Elevation.TryRelaunchElevated(restore))
         {
             Session.RequestRestartElevated();

@@ -27,7 +27,7 @@ startup and restores it byte-for-byte in a `finally`, printing a NOTE if it had
 to. This is not belt-and-braces — `probe-3d` really did destroy a live
 settings.json by driving the editor UI and then pumping longer than the debounce,
 which is a very easy mistake to make and leaves no trace that anything happened.
-Keep the guard on any new probe that builds a `SettingsForm`.
+Keep the guard on any new probe that builds a `SettingsShell`.
 
 **`-STA` and pwsh 7.** Windows PowerShell 5.1 can't load the .NET 8 assembly and
 fails by handing back a null form, which looks like a pass.

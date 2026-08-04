@@ -1,4 +1,4 @@
-# Renders the new SettingsForm and screenshots every page.
+# Renders the settings shell and screenshots every page.
 # Constructs the form only — no keyboard hook, no tray, no lock. Uses a fresh
 # in-memory Settings so nothing touches %APPDATA%\CatFoil.
 $ErrorActionPreference = 'Stop'
@@ -50,12 +50,21 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $settingsType = $asm.GetType('CatFoil.Settings')
-$formType     = $asm.GetType('CatFoil.SettingsForm')
-if (-not $formType) { throw 'SettingsForm type not found — probe would false-pass.' }
+$shellType    = $asm.GetType('CatFoil.SettingsShell')
+if (-not $shellType) { throw 'SettingsShell type not found — probe would false-pass.' }
 
 $settings = [Activator]::CreateInstance($settingsType)
-$form     = [Activator]::CreateInstance($formType, @($settings))
-if (-not $form) { throw 'SettingsForm instance was null.' }
+$shell    = [Activator]::CreateInstance($shellType, @($settings))
+if (-not $shell) { throw 'SettingsShell instance was null.' }
+
+# The shell is a UserControl now; host it in a bare form sized like the old
+# SettingsForm so the pages lay out at their designed dimensions.
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'probe host'
+$form.ClientSize  = New-Object System.Drawing.Size(900, 720)
+$form.MinimumSize = New-Object System.Drawing.Size(840, 560)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(80, 60)
@@ -63,7 +72,7 @@ $form.Show()
 $form.Activate()
 
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
-$nav = $formType.GetField('_nav', $flags).GetValue($form)
+$nav = $shellType.GetField('_nav', $flags).GetValue($shell)
 Write-Host "Nav items: $($nav.Items.Count) -> $($nav.Items -join ', ')"
 
 function Pump { param($ms = 400)

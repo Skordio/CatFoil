@@ -22,7 +22,8 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $asm      = [Reflection.Assembly]::LoadFrom($CatFoilDll)
-$formType = $asm.GetType('CatFoil.SettingsForm')
+$formType = $asm.GetType('CatFoil.SettingsShell')
+if (-not $formType) { throw 'SettingsShell type not found — probe would false-pass.' }
 $pageType = $asm.GetType('CatFoil.StatisticsPage')
 $settingsType = $asm.GetType('CatFoil.Settings')
 $flags    = [Reflection.BindingFlags]'Instance,NonPublic'
@@ -52,16 +53,20 @@ $script:resetHits = 0
 $inProgress = [Func[long]]{ 90L }
 $onReset    = [Action]{ $script:resetHits++ }
 
-$form = [Activator]::CreateInstance($formType,
+$shell = [Activator]::CreateInstance($formType,
   @($settings.PSObject.BaseObject, $inProgress, $onReset))
+$form = New-Object System.Windows.Forms.Form
+$form.ClientSize = New-Object System.Drawing.Size(900, 720)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 try {
   $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
   $form.Location = New-Object System.Drawing.Point(80, 60)
   $form.Show()
   Pump 400
 
-  $nav   = $formType.GetField('_nav', $flags).GetValue($form)
-  $pages = $formType.GetField('_pages', $flags).GetValue($form)
+  $nav   = $formType.GetField('_nav', $flags).GetValue($shell)
+  $pages = $formType.GetField('_pages', $flags).GetValue($shell)
   $statsIndex = -1
   for ($i = 0; $i -lt $nav.Items.Count; $i++) {
     if ($nav.Items[$i] -eq 'Statistics') { $statsIndex = $i }
@@ -108,7 +113,7 @@ try {
   $select = $formType.GetMethods($flags) | Where-Object { $_.Name -eq 'SelectPage' -and $_.IsGenericMethod }
   Check 'SelectPage<T> exists' ($null -ne $select)
   if ($null -ne $select) {
-    $select.MakeGenericMethod($pageType).Invoke($form.PSObject.BaseObject, @()) | Out-Null
+    $select.MakeGenericMethod($pageType).Invoke($shell.PSObject.BaseObject, @()) | Out-Null
     Pump 200
     Check 'SelectPage lands on Statistics' ($nav.SelectedIndex -eq $statsIndex)
   }
@@ -117,9 +122,9 @@ finally { $form.Dispose() }
 
 # The one-arg constructor other probes use must keep working (no live hooks:
 # the page shows the counters without an in-progress session).
-$form2 = [Activator]::CreateInstance($formType, @([Activator]::CreateInstance($settingsType).PSObject.BaseObject))
-try { Check 'one-arg constructor still works' ($null -ne $form2) }
-finally { $form2.Dispose() }
+$shell2 = [Activator]::CreateInstance($formType, @([Activator]::CreateInstance($settingsType).PSObject.BaseObject))
+try { Check 'one-arg constructor still works' ($null -ne $shell2) }
+finally { $shell2.Dispose() }
 
 Write-Host ''
 if ($fails -eq 0) { Write-Host 'ALL PASS' -ForegroundColor Green } else { Write-Host "$fails FAILED" -ForegroundColor Red; exit 1 }

@@ -122,24 +122,29 @@ Remove-Item $tmp, $notAudio -Force -ErrorAction SilentlyContinue
 
 # --- 5. The Sounds page builds and binds ------------------------------------
 [System.Windows.Forms.Application]::EnableVisualStyles()
-$fT = $asm.GetType('CatFoil.SettingsForm')
+$fT = $asm.GetType('CatFoil.SettingsShell')
+if (-not $fT) { throw 'SettingsShell type not found — probe would false-pass.' }
 $ifl = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
 $settings = [Activator]::CreateInstance($sT)
 $settings.EnsureOverlays() | Out-Null; $settings.EnsureSounds()
 $settings.LockSound.Enabled = $true
 
-$form = [Activator]::CreateInstance($fT, @($settings))
+$shell = [Activator]::CreateInstance($fT, @($settings))
+$form = New-Object System.Windows.Forms.Form
+$form.ClientSize = New-Object System.Drawing.Size(900, 720)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 $form.Icon = [System.Drawing.SystemIcons]::Application
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(60, 40)
 $form.Show()
 $end = (Get-Date).AddMilliseconds(400)
 while ((Get-Date) -lt $end) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 15 }
-($fT.GetField('_nav', $ifl).GetValue($form)).SelectedIndex = 3
+($fT.GetField('_nav', $ifl).GetValue($shell)).SelectedIndex = 3
 $end = (Get-Date).AddMilliseconds(400)
 while ((Get-Date) -lt $end) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 15 }
 
-$page = ($fT.GetField('_pages', $ifl).GetValue($form))[3]
+$page = ($fT.GetField('_pages', $ifl).GetValue($shell))[3]
 $all = New-Object System.Collections.ArrayList
 function Walk($c) { foreach ($k in $c.Controls) { [void]$all.Add($k); Walk $k } }
 Walk $page

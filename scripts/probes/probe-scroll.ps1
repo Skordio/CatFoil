@@ -32,10 +32,15 @@ public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $sT  = $asm.GetType('CatFoil.Settings')
-$fT  = $asm.GetType('CatFoil.SettingsForm')
+$fT  = $asm.GetType('CatFoil.SettingsShell')
+if (-not $fT) { throw 'SettingsShell type not found — probe would false-pass.' }
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
 
-$form = [Activator]::CreateInstance($fT, @([Activator]::CreateInstance($sT)))
+$shell = [Activator]::CreateInstance($fT, @([Activator]::CreateInstance($sT)))
+$form = New-Object System.Windows.Forms.Form
+$form.ClientSize = New-Object System.Drawing.Size(900, 720)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(80, 60)
 $form.MinimumSize = New-Object System.Drawing.Size(420, 220)
@@ -47,7 +52,7 @@ function Pump { param($ms = 400)
 }
 Pump 500
 
-$nav = $fT.GetField('_nav', $flags).GetValue($form)
+$nav = $fT.GetField('_nav', $flags).GetValue($shell)
 $nav.SelectedIndex = 1        # Locking — the tallest page
 Pump 400
 
@@ -55,7 +60,7 @@ Pump 400
 $form.Size = New-Object System.Drawing.Size(560, 260)
 Pump 600
 
-$pages = $fT.GetField('_pages', $flags).GetValue($form)
+$pages = $fT.GetField('_pages', $flags).GetValue($shell)
 $page  = $pages[1]
 Write-Host "page client height : $($page.ClientSize.Height)"
 Write-Host "content height     : $($page.DisplayRectangle.Height)"

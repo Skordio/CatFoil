@@ -34,7 +34,8 @@ public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
 $out = $ProbeShots
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $sT  = $asm.GetType('CatFoil.Settings')
-$fT  = $asm.GetType('CatFoil.SettingsForm')
+$fT  = $asm.GetType('CatFoil.SettingsShell')
+if (-not $fT) { throw 'SettingsShell type not found — probe would false-pass.' }
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
 
 $fails = 0
@@ -65,28 +66,33 @@ $settings = [Activator]::CreateInstance($sT)
 $item = $settings.EnsureOverlays()[0]
 $item.Name = 'Desk cat'
 
-$form = [Activator]::CreateInstance($fT, @($settings))
+$shell = [Activator]::CreateInstance($fT, @($settings))
+$form = New-Object System.Windows.Forms.Form
+$form.ClientSize  = New-Object System.Drawing.Size(900, 720)
+$form.MinimumSize = New-Object System.Drawing.Size(840, 560)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 $form.Icon = [System.Drawing.SystemIcons]::Application
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(60, 40)
 $form.Show()
 Pump 500
 
-$nav = $fT.GetField('_nav', $flags).GetValue($form)
+$nav = $fT.GetField('_nav', $flags).GetValue($shell)
 $nav.SelectedIndex = 2
 Pump 400
 
 # Open the editor the way the UI does: the card's Edit button.
-$page = ($fT.GetField('_pages', $flags).GetValue($form))[2]
+$page = ($fT.GetField('_pages', $flags).GetValue($shell))[2]
 $card = @($page.Controls[0].Controls | Where-Object { $_.GetType().Name -eq 'OverlayCard' })[0]
 $edit = @($card.Controls | Where-Object { $_.Text -eq 'Edit' })[0]
 $edit.PerformClick()
 Pump 600
 
-$sub = $fT.GetField('_subPage', $flags).GetValue($form)
+$sub = $fT.GetField('_subPage', $flags).GetValue($shell)
 Check 'Edit opens a sub-page' ($null -ne $sub)
 Check 'sub-page is the overlay editor' ($sub.GetType().Name -eq 'OverlayEditorPage') $sub.GetType().Name
-$hdr = $fT.GetField('_header', $flags).GetValue($form)
+$hdr = $fT.GetField('_header', $flags).GetValue($shell)
 Check 'breadcrumb names the overlay' ($hdr.Text -like '*Desk cat*') $hdr.Text
 Shot $form '3d-editor.png'
 
@@ -182,7 +188,7 @@ Check 'preview animation runs while toggled on' ($true)
 $demo.Checked = $false
 
 # --- back to the list, which must pick the changes up ------------------------
-$fT.GetMethod('PopSubPage', $flags).Invoke($form, @()) | Out-Null
+$fT.GetMethod('PopSubPage', $flags).Invoke($shell, @()) | Out-Null
 Pump 500
 Check 'sub-page disposed on back' ($sub.IsDisposed)
 $cards = @($page.Controls[0].Controls | Where-Object { $_.GetType().Name -eq 'OverlayCard' })

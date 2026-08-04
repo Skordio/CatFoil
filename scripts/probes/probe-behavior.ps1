@@ -30,18 +30,23 @@ Add-Type -AssemblyName System.Drawing
 
 $asm  = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $sT   = $asm.GetType('CatFoil.Settings')
-$fT   = $asm.GetType('CatFoil.SettingsForm')
+$fT   = $asm.GetType('CatFoil.SettingsShell')
+if (-not $fT) { throw 'SettingsShell type not found — probe would false-pass.' }
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
 
 $settings = [Activator]::CreateInstance($sT)
-$form     = [Activator]::CreateInstance($fT, @($settings))
+$shell    = [Activator]::CreateInstance($fT, @($settings))
+$form = New-Object System.Windows.Forms.Form
+$form.ClientSize = New-Object System.Drawing.Size(900, 720)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 
 $script:changed  = 0
 $script:captures = @()
 # A real delegate, not Register-ObjectEvent: the latter queues the handler for
 # the PowerShell event loop, so it would never run in a probe that deliberately
 # avoids pumping after the edit.
-$fT.GetEvent('SettingsSaved').AddEventHandler($form, [Action]{ $script:changed++ })
+$fT.GetEvent('SettingsSaved').AddEventHandler($shell, [Action]{ $script:changed++ })
 
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(80, 60)
@@ -62,8 +67,8 @@ function Find-Control { param($root, $predicate)
 
 Pump 600   # safe: no edit yet, so a debounce tick would have nothing to write
 
-$pages   = $fT.GetField('_pages', $flags).GetValue($form)
-$session = $fT.GetField('_session', $flags).GetValue($form)
+$pages   = $fT.GetField('_pages', $flags).GetValue($shell)
+$session = $fT.GetField('_session', $flags).GetValue($shell)
 $sessT   = $session.GetType()
 
 $pass = $true
@@ -74,7 +79,7 @@ function Check { param($name, $ok, $detail = '')
 }
 
 # --- 1. Hotkey capture suspends/resumes the global hotkey ---
-$nav = $fT.GetField('_nav', $flags).GetValue($form)
+$nav = $fT.GetField('_nav', $flags).GetValue($shell)
 $nav.SelectedIndex = 1        # Locking
 Pump 300
 $txt = Find-Control $pages[1] { param($c) $c -is [System.Windows.Forms.TextBox] }
@@ -84,7 +89,7 @@ Check 'hotkey box shows default binding' ($txt.Text -eq 'Alt + G') "(got '$($txt
 $capture = $null
 $handler = [Action[bool]]{ param($v) $script:captures += $v }
 $evt = $fT.GetEvent('HotkeyCaptureChanged')
-$evt.AddEventHandler($form, $handler)
+$evt.AddEventHandler($shell, $handler)
 
 $txt.Focus() | Out-Null
 Pump 200

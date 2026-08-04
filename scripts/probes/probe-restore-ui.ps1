@@ -7,7 +7,7 @@
 # overriding StartMinimized for that one launch.
 #
 # TryRelaunchElevated is never INVOKED here (it would pop a real UAC prompt);
-# only its signature is checked. SettingsForm construction keeps the standard
+# only its signature is checked. SettingsShell construction keeps the standard
 # settings.json guard.
 $ErrorActionPreference = 'Stop'
 
@@ -77,11 +77,12 @@ Check 'TryRelaunchElevated takes the restore args' `
       "params=$($ps.Length)"
 
 # ---------------------------------------------------------------
-# 3. SettingsForm: the page the user is on, by name
+# 3. SettingsShell: the page the user is on, by name
 # ---------------------------------------------------------------
 $sT   = $asm.GetType('CatFoil.Settings')
 $settings = [Text.Json.JsonSerializer]::Deserialize('{}', $sT)
-$fT   = $asm.GetType('CatFoil.SettingsForm')
+$fT   = $asm.GetType('CatFoil.SettingsShell')
+Check 'SettingsShell exists' ($null -ne $fT)
 $form = [Activator]::CreateInstance($fT, @($settings.PSObject.BaseObject))
 try {
   # Both members are internal, so NonPublic binding is needed to see them.
@@ -99,7 +100,7 @@ try {
   }
 }
 finally {
-  $form.Dispose()   # dispose, never close — closing flushes settings
+  $form.Dispose()   # dispose, never EndVisit — the visit-end hook flushes settings
 }
 
 Write-Host ''

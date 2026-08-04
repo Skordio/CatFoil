@@ -35,8 +35,21 @@ $root = $RepoRoot
 $out  = $ProbeShots
 $asm  = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $sT   = $asm.GetType('CatFoil.Settings')
-$fT   = $asm.GetType('CatFoil.SettingsForm')
+$fT   = $asm.GetType('CatFoil.SettingsShell')
+if (-not $fT) { throw 'SettingsShell type not found — probe would false-pass.' }
 $itT  = $asm.GetType('CatFoil.OverlayItem')
+
+# The shell is a UserControl; every construction below hosts it in a bare form
+# sized like the old SettingsForm so pages lay out at designed dimensions.
+function New-ShellHost($settingsObj) {
+  $s = [Activator]::CreateInstance($script:fT, @($settingsObj))
+  $f = New-Object System.Windows.Forms.Form
+  $f.ClientSize  = New-Object System.Drawing.Size(900, 720)
+  $f.MinimumSize = New-Object System.Drawing.Size(840, 560)
+  $s.Dock = [System.Windows.Forms.DockStyle]::Fill
+  $f.Controls.Add($s)
+  @($f, $s)   # unrolled on output, so `$form, $shell = New-ShellHost ...` works
+}
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
 
 $fails = 0
@@ -67,18 +80,18 @@ $list[1].Appearance.Size = 128
 $list[2].Enabled = $false
 $list[2].ShowIn = [Enum]::Parse($asm.GetType('CatFoil.OverlayShowIn'), 'OnlyFullscreen')
 
-$form = [Activator]::CreateInstance($fT, @($settings))
+$form, $shell = New-ShellHost $settings
 $form.Icon = [System.Drawing.SystemIcons]::Application
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(80, 60)
 $form.Show()
 Pump 500
 
-$nav  = $fT.GetField('_nav', $flags).GetValue($form)
-$back = $fT.GetField('_back', $flags).GetValue($form)
-$hdr  = $fT.GetField('_header', $flags).GetValue($form)
-$host_ = $fT.GetField('_host', $flags).GetValue($form)
-$pages = $fT.GetField('_pages', $flags).GetValue($form)
+$nav  = $fT.GetField('_nav', $flags).GetValue($shell)
+$back = $fT.GetField('_back', $flags).GetValue($shell)
+$hdr  = $fT.GetField('_header', $flags).GetValue($shell)
+$host_ = $fT.GetField('_host', $flags).GetValue($shell)
+$pages = $fT.GetField('_pages', $flags).GetValue($shell)
 
 $nav.SelectedIndex = 2      # Overlays
 Pump 500
@@ -113,9 +126,9 @@ Check 'back button hidden on a nav page' (-not $back.Visible)
 Check 'header is the page title' ($hdr.Text -eq 'Overlays') $hdr.Text
 
 $subT = $asm.GetType('CatFoil.AboutPage')   # any SettingsPage will do as a stand-in
-$sess = $fT.GetField('_session', $flags).GetValue($form)
+$sess = $fT.GetField('_session', $flags).GetValue($shell)
 $sub  = [Activator]::CreateInstance($subT, @($sess))
-$fT.GetMethod('ShowSubPage', $flags).Invoke($form, @($sub))
+$fT.GetMethod('ShowSubPage', $flags).Invoke($shell, @($sub))
 Pump 300
 Shot $form '3a-subpage.png'
 
@@ -132,7 +145,7 @@ function SendEscape {
   $a = New-Object object[] 2
   $a[0] = $msg
   $a[1] = [System.Windows.Forms.Keys]::Escape
-  $fT.GetMethod('ProcessCmdKey', $flags).Invoke($form, $a) | Out-Null
+  $fT.GetMethod('ProcessCmdKey', $flags).Invoke($shell, $a) | Out-Null
 }
 SendEscape
 Pump 400
@@ -144,7 +157,7 @@ Check 'sub-page removed from host' (-not $host_.Controls.Contains($sub))
 
 # Switching nav away from a sub-page must not leave it on screen.
 $sub2 = [Activator]::CreateInstance($subT, @($sess))
-$fT.GetMethod('ShowSubPage', $flags).Invoke($form, @($sub2))
+$fT.GetMethod('ShowSubPage', $flags).Invoke($shell, @($sub2))
 Pump 250
 $nav.SelectedIndex = 0      # General
 Pump 300
@@ -156,7 +169,7 @@ Check 'only one page visible' (@($host_.Controls | Where-Object { $_.Visible }).
 $nav.SelectedIndex = 2
 Pump 250
 $sub3 = [Activator]::CreateInstance($subT, @($sess))
-$fT.GetMethod('ShowSubPage', $flags).Invoke($form, @($sub3))
+$fT.GetMethod('ShowSubPage', $flags).Invoke($shell, @($sub3))
 Pump 250
 $rowY = $nav.GetItemRectangle(2).Y + 10
 $md = New-Object System.Windows.Forms.MouseEventArgs(
@@ -173,15 +186,15 @@ Check 'overlays page restored by re-click' ($page.Visible)
 # --- the single-overlay case: Remove must be refused ------------------------
 $solo = [Activator]::CreateInstance($sT)
 $solo.EnsureOverlays() | Out-Null
-$soloForm = [Activator]::CreateInstance($fT, @($solo))
+$soloForm, $soloShell = New-ShellHost $solo
 $soloForm.Icon = [System.Drawing.SystemIcons]::Application
 $soloForm.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $soloForm.Location = New-Object System.Drawing.Point(900, 60)
 $soloForm.Show()
 Pump 400
-($fT.GetField('_nav', $flags).GetValue($soloForm)).SelectedIndex = 2
+($fT.GetField('_nav', $flags).GetValue($soloShell)).SelectedIndex = 2
 Pump 400
-$soloPage = ($fT.GetField('_pages', $flags).GetValue($soloForm))[2]
+$soloPage = ($fT.GetField('_pages', $flags).GetValue($soloShell))[2]
 $soloCards = @($soloPage.Controls[0].Controls | Where-Object { $_.GetType().Name -eq 'OverlayCard' })
 Check 'single overlay renders one card' ($soloCards.Count -eq 1) "cards=$($soloCards.Count)"
 Check 'Remove DISABLED at one overlay' (-not (MenuItem $soloCards[0] 'Remove').Enabled)

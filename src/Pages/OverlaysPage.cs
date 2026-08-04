@@ -108,7 +108,7 @@ internal sealed class OverlaysPage : SettingsPage
     {
         // The editor is a sub-page of the shell, not a dialog: it applies
         // immediately like every other setting, and the shell owns disposing it.
-        (FindForm() as SettingsForm)?.ShowSubPage(new OverlayEditorPage(Session, item));
+        Shell?.ShowSubPage(new OverlayEditorPage(Session, item));
     }
 
     private void OnAdd()

@@ -21,7 +21,8 @@ Add-Type -AssemblyName System.Drawing
 
 $asm = [Reflection.Assembly]::LoadFrom($CatFoilDll)
 $sT   = $asm.GetType('CatFoil.Settings')
-$fT   = $asm.GetType('CatFoil.SettingsForm')
+$fT   = $asm.GetType('CatFoil.SettingsShell')
+if (-not $fT) { throw 'SettingsShell type not found — probe would false-pass.' }
 $oT   = $asm.GetType('CatFoil.OverlayForm')
 $stT  = $asm.GetType('CatFoil.OverlayAppearance')
 $srcT = $asm.GetType('CatFoil.OverlayIconSource')
@@ -41,18 +42,23 @@ $settings = [Activator]::CreateInstance($sT)
 $item = $settings.EnsureOverlays()[0]
 $settings.EnsureSounds()
 
-$form = [Activator]::CreateInstance($fT, @($settings))
+$shell = [Activator]::CreateInstance($fT, @($settings))
+$form = New-Object System.Windows.Forms.Form
+$form.ClientSize  = New-Object System.Drawing.Size(900, 720)
+$form.MinimumSize = New-Object System.Drawing.Size(840, 560)
+$shell.Dock = [System.Windows.Forms.DockStyle]::Fill
+$form.Controls.Add($shell)
 $form.Icon = [System.Drawing.SystemIcons]::Application
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.Location = New-Object System.Drawing.Point(50, 30)
 $form.Show(); Pump 450
-($fT.GetField('_nav', $ifl).GetValue($form)).SelectedIndex = 2
+($fT.GetField('_nav', $ifl).GetValue($shell)).SelectedIndex = 2
 Pump 400
-$page = ($fT.GetField('_pages', $ifl).GetValue($form))[2]
+$page = ($fT.GetField('_pages', $ifl).GetValue($shell))[2]
 $card = @($page.Controls[0].Controls | Where-Object { $_.GetType().Name -eq 'OverlayCard' })[0]
 (@($card.Controls | Where-Object { $_.Text -eq 'Edit' })[0]).PerformClick()
 Pump 500
-$sub = $fT.GetField('_subPage', $ifl).GetValue($form)
+$sub = $fT.GetField('_subPage', $ifl).GetValue($shell)
 $body = @($sub.Controls[0].Controls | Where-Object { $_.GetType().Name -eq 'Panel' })[0]
 
 # --- Finding 2: rebuilding the editor body must dispose EVERY control --------
@@ -75,7 +81,7 @@ Check 'every control from the old body was disposed' ($leaked.Count -eq 0) `
   ("$($leaked.Count) leaked: " + (($leaked | ForEach-Object { $_.GetType().Name }) -join ','))
 
 # --- Finding 8: the breadcrumb follows a rename ------------------------------
-$hdr = $fT.GetField('_header', $ifl).GetValue($form)
+$hdr = $fT.GetField('_header', $ifl).GetValue($shell)
 $allc = New-Object System.Collections.ArrayList
 function Walk2($c) { foreach ($k in $c.Controls) { [void]$allc.Add($k); Walk2 $k } }
 Walk2 $sub
@@ -84,7 +90,7 @@ $nameBox.Text = 'Renamed badge'
 Pump 250
 Check 'breadcrumb follows a rename' ($hdr.Text -like '*Renamed badge*') $hdr.Text
 
-$fT.GetMethod('PopSubPage', $ifl).Invoke($form, @()) | Out-Null
+$fT.GetMethod('PopSubPage', $ifl).Invoke($shell, @()) | Out-Null
 Pump 350
 $form.Dispose()
 
@@ -170,7 +176,7 @@ $partial = RingEdgeAlphas
 Check 'the blocked ring is antialiased' ($partial -gt 60) "partial-alpha pixels across the four corner arcs: $partial"
 
 # --- Finding 7: MCI devices are released before the sweep -------------------
-$formSrc = Get-Content (Join-Path $RepoRoot 'src\SettingsForm.cs') -Raw
+$formSrc = Get-Content (Join-Path $RepoRoot 'src\SettingsShell.cs') -Raw
 $closeAt = $formSrc.IndexOf('AudioPlayer.CloseAll()')
 $sweepAt = $formSrc.IndexOf('SoundStore.CollectGarbage')
 Check 'audio devices are closed before sounds are swept' `
