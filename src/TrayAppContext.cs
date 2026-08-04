@@ -36,7 +36,10 @@ public sealed class TrayAppContext : ApplicationContext
     private int _timedSecondsLeft;
     private readonly Icon _appIcon;
 
-    private SettingsForm? _settingsForm;
+    // The settings UI, created on first visit and then alive for the app's
+    // lifetime inside the main window (disposed with it). Per-visit semantics
+    // are carried by SettingsShell.EndVisit, not by disposal.
+    private SettingsShell? _shell;
     private RegisteredWaitHandle? _showWait;
     private int _lastToggleTick;
     private int _lockStartTick;
@@ -143,7 +146,7 @@ public sealed class TrayAppContext : ApplicationContext
             if (RestoreUi.SettingsPage(launchArgs) is string page)
             {
                 ShowSettings();
-                _settingsForm!.SelectPage(page);
+                _shell!.SelectPage(page);
             }
         }
         else if (!_settings.StartMinimized)
@@ -421,7 +424,7 @@ public sealed class TrayAppContext : ApplicationContext
     private void ShowStats()
     {
         ShowSettings();
-        _settingsForm!.SelectPage<StatisticsPage>();
+        _shell!.SelectPage<StatisticsPage>();
     }
 
     private void ShowWelcome()
@@ -435,18 +438,19 @@ public sealed class TrayAppContext : ApplicationContext
 
     private void ShowSettings()
     {
-        if (_settingsForm is { IsDisposed: false })
+        if (_shell is null)
         {
-            _settingsForm.Activate();
-            return;
+            // Wired once, here — EnterSettings re-shows the same shell on every
+            // later visit, so subscribing there would stack handlers.
+            _shell = new SettingsShell(_settings, InProgressLockSeconds, OnStatsReset);
+            _shell.SettingsSaved += ApplyLiveEdit;
+            // The elevated relaunch is already running; quit so it can take over.
+            _shell.RestartElevatedRequested += ExitApp;
+            _shell.HotkeyCaptureChanged += OnHotkeyCaptureChanged;
         }
 
-        _settingsForm = new SettingsForm(_settings, InProgressLockSeconds, OnStatsReset) { Icon = _appIcon };
-        _settingsForm.SettingsSaved += ApplyLiveEdit;
-        // The elevated relaunch is already running; quit so it can take over.
-        _settingsForm.RestartElevatedRequested += ExitApp;
-        _settingsForm.HotkeyCaptureChanged += OnHotkeyCaptureChanged;
-        _settingsForm.Show();
+        ShowMainWindow();
+        _mainForm.EnterSettings(_shell);
     }
 
     /// <summary>

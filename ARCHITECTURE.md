@@ -27,14 +27,31 @@ The app is **tray-first**: closing the main window hides it to the tray (unless
 ## 2. Screens & windows
 
 ### 2.1 Main window — `src/MainForm.cs`
-The central lock/unlock surface. Two visual states:
+The one CatFoil window. It carries two **views**, one filling it at a time:
 
-- **Unlocked** (420×260): large green "Keyboard is unlocked." status.
-- **Locked** (760×480, re-centered): calm gray message —
-  *"The keyboard is currently locked."* —
-  and the toggle button reads **Unlock Keyboard**.
+- the **main view** — the lock/unlock surface described here, and
+- the **settings view** — the `SettingsShell` (§2.2) under a slim strip with a
+  persistent "back to CatFoil" button, entered via `EnterSettings` and left via
+  `LeaveSettings`.
 
-Persistent controls:
+Each view has its own size. The main view defaults to 700×440; the settings
+view to the shell's design size plus the strip. Whatever the user stretches
+either view to is recorded on drag-end into `Settings.MainWindowSize` /
+`SettingsWindowSize` and survives restarts (clamped on use to the view minimum
+and the screen — settings.json is hand-editable). Leaving settings restores the
+main view's size exactly.
+
+**Locking never resizes the window.** The lock/unlock state change is the text,
+not the geometry — `SetLockedUi` swaps fonts, colors, title and button caption
+only:
+
+- **Unlocked**: large green "Keyboard is unlocked." status.
+- **Locked**: calm gray message — *"The keyboard is currently locked."* —
+  and the toggle button reads **Unlock Keyboard**. Locking while in settings
+  first snaps back to the main view: the lock screen is the product surface,
+  and it should be what's on screen while CatFoil works.
+
+Persistent controls (main view):
 - **Lock/Unlock Keyboard** button (docked bottom, large) — raises `ToggleRequested`.
 - **Settings** button (top-left) — raises `SettingsRequested`. (The red Exit
   button that sat beside it was removed 2026-08-02 — quitting is a tray-menu
@@ -45,13 +62,25 @@ Persistent controls:
 
 Behaviors:
 - **Close-to-tray**: `FormClosing` cancels a user close and hides, unless
-  `AllowClose` is set (real exit) or the tray-on-close setting is off.
+  `AllowClose` is set (real exit) or the tray-on-close setting is off. Either
+  way the close path first calls `LeaveSettings()` — that is what makes "the
+  next open always shows the main view" true by construction, ends the settings
+  visit (flush + sweeps) exactly where the old settings-window close did, and
+  on a real exit flushes any debounced edit. Minimize is NOT close: the view
+  survives a minimize/restore.
+- **Escape** is a settings gesture only: on a settings sub-page it goes back a
+  level, on a settings page it returns to the main view, and in the main view
+  it does nothing.
 - **Timed-lock countdown**: `ShowLockCountdown` appends "Auto-unlock in m:ss"
   while a user-chosen "Lock for N minutes" runs.
 
-### 2.2 Settings window — `src/SettingsForm.cs` + `src/Pages/`
-A resizable window (900×720, min 840×560), lazily created and reused by the tray.
-`SettingsForm` itself is only a **shell**: an owner-drawn navigation list on the
+### 2.2 Settings view — `src/SettingsShell.cs` + `src/Pages/`
+The whole settings UI is a `SettingsShell` **UserControl**, hosted inside the
+main window (there is no separate settings window since 0.6.0; `SettingsForm`
+is gone). The tray creates it on the first visit, wires its events once, and it
+lives for the rest of the process — "the visit ended" is `EndVisit()` (capture
+release → flush → MCI close → icon/sound sweeps), not disposal. The shell is
+an owner-drawn navigation list on the
 left and one page at a time on the right. Each page is a `SettingsPage`
 (`src/Pages/`), so adding a setting is a row on a page rather than a re-layout of
 one fixed-pixel dialog. Pages are parented on first visit, which is what defers
@@ -59,9 +88,8 @@ Advanced's `schtasks.exe` query until the user goes there.
 
 `SettingsPage` (`src/Pages/SettingsPage.cs`) is the base: a single auto-sizing
 column inside an `AutoScroll` panel, with `AddSection` / `AddCheck` / `AddHint` /
-`AddRow` / `AddStretchRow` / `ClearRows` helpers and shared static fonts (a
-settings window can be reopened repeatedly, and WinForms never disposes a Font
-assigned to a control).
+`AddRow` / `AddStretchRow` / `ClearRows` helpers and shared static fonts
+(WinForms never disposes a Font assigned to a control).
 
 **Sub-pages.** Besides the seven nav entries the shell can show one page reached
 from *within* another — `ShowSubPage` / `PopSubPage`, one deep. The header row
@@ -105,7 +133,7 @@ Pages:
   during a lock via an in-progress-seconds callback from the tray), and
   blocked-key count, with a confirm-then-save **Reset…**. Replaced the separate
   `StatsForm` dialog; the tray's "Statistics…" entry now opens the settings
-  window on this page (`SelectPage<T>`). Its 1 s refresh timer runs only while
+  view on this page (`SelectPage<T>`). Its 1 s refresh timer runs only while
   the page is on screen — the page is constructed hidden so the shell's first
   `Visible = true` is a real transition that starts it.
 - **Advanced** — **Run as administrator (also block elevated windows)** with an
@@ -234,8 +262,8 @@ tracks state ("CatFoil — keyboard active" / "— KEYBOARD LOCKED").
   1. **Open CatFoil** (bold default) → show main window
   2. **Lock Keyboard** / **Unlock Keyboard** (label toggles with state)
   3. **Lock for…** submenu — 5/15/30/60 minutes, then auto-unlock
-  4. **Statistics…** → the settings window, opened on its Statistics page
-  5. **Settings…** → open the settings window
+  4. **Statistics…** → the settings view, opened on its Statistics page
+  5. **Settings…** → open the settings view in the main window
   6. — separator —
   7. **Exit** → shut the app down
 
@@ -387,7 +415,7 @@ referenced and is swept at window close.
 
 `Duplicate()` copies an existing image to a new overlay's name, so a duplicated
 overlay owns its picture rather than sharing the original's file.
-`CollectGarbage()` — run when the settings window closes — deletes stored images
+`CollectGarbage()` — run when a settings visit ends (`SettingsShell.EndVisit`) — deletes stored images
 nothing refers to any more, left behind when an overlay is removed, switched back
 to the default icon, or given a replacement of a different file type (which lands
 under a different name). It only
@@ -456,8 +484,8 @@ runs on exit: MCI handles are process-wide and hold the files open.
 
 `SoundStore` mirrors `IconStore` exactly — imports copied into
 `%APPDATA%\CatFoil\sounds` under unique names, paths stored relative to
-`Settings.Directory`, and unreferenced files swept when the settings window
-closes.
+`Settings.Directory`, and unreferenced files swept when the settings visit
+ends.
 ---
 
 ## 6. Feature checklist
@@ -507,8 +535,10 @@ are out of a user-mode hook's reach:
   exit (`--await-exit <pid>`, handled in `src/Program.cs`) before taking the
   single-instance slot. The relaunch command line also carries the open-windows
   state (`src/RestoreUi.cs`: `--restore-main`, `--restore-settings <page>`), and
-  the elevated instance re-opens exactly those — overriding `StartMinimized`,
+  the elevated instance re-opens exactly that — overriding `StartMinimized`,
   which otherwise made the app vanish mid-settings-visit for start-closed users.
+  Since the one-window change `--restore-settings` means "open the main window
+  in the settings view, on that page".
   Even elevated, Ctrl+Alt+Del and Win+L remain unblockable.
 - **Key-ups always pass through** by design (prevents stuck modifiers) — harmless,
   since a lone key-up can't type. Some special hardware/media/Fn keys may also

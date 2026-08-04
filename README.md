@@ -87,9 +87,9 @@ a Microsoft-Trusted-Root cert.
 | `src/TrayAppContext.cs` | App shell: tray icon/menu, lock state, timed lock, wiring between everything. |
 | `src/KeyboardHook.cs` | The `WH_KEYBOARD_LL` hook; swallows keys while locked, detects the unlock combo. |
 | `src/HotkeyManager.cs` | `RegisterHotKey` wrapper for locking while the keyboard is live. |
-| `src/MainForm.cs` | The lock/unlock window (hotkey badge, timed-lock countdown). |
+| `src/MainForm.cs` | The one CatFoil window: lock/unlock view and, on demand, the settings view. |
 | `src/OverlayForm.cs` | The draggable locked-state badge + fullscreen detection. |
-| `src/SettingsForm.cs` | Settings UI (general, hotkey, auto-lock). |
+| `src/SettingsShell.cs` | Settings UI (nav, pages, sub-pages) — hosted inside the main window. |
 | `src/Settings.cs` | JSON settings in `%APPDATA%\CatFoil`. |
 | `assets/cat.ico` | Placeholder cat icon (EXE, tray, overlay) — replace with real art anytime. |
 | `CatFoil.csproj` | SDK-style project file (WinForms, `net8.0-windows`, no external dependencies). |

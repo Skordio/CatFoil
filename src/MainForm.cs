@@ -9,6 +9,15 @@ public sealed class MainForm : Form
 {
     private readonly Settings _settings;
 
+    // The window's two views: the main lock screen, and settings. One of them
+    // fills the window at a time; each remembers its own size (persisted via
+    // Settings.MainWindowSize / SettingsWindowSize).
+    private readonly Panel _mainView = new();
+    private Panel? _settingsView;
+    private SettingsShell? _shell;
+    private SettingsShell.BackButton? _returnButton;
+    private bool _inSettings;
+
     private readonly Label _status = new();
     private readonly Button _toggle = new();
     private readonly Button _settingsButton = new();
@@ -16,8 +25,19 @@ public sealed class MainForm : Form
     private readonly ToolTip _tip = new();
     private bool _locked;
 
-    private static readonly Size UnlockedSize = new(420, 260);
-    private static readonly Size LockedSize   = new(760, 480);
+    // One size for the main view whether locked or not: locking used to grow
+    // the window, but a resize the user didn't ask for reads as the window
+    // jumping around — the state change is the text, not the geometry.
+    private static readonly Size MainViewSize = new(700, 440);
+    private static readonly Size MainViewMinimum = new(420, 260);
+
+    // The settings pages were designed for SettingsShell.DesignSize; the strip
+    // with the return button sits above the shell, so the window adds its height.
+    private const int ReturnStripHeight = 44;
+    private static readonly Size SettingsViewSize =
+        new(SettingsShell.DesignSize.Width, SettingsShell.DesignSize.Height + ReturnStripHeight);
+    private static readonly Size SettingsViewMinimum =
+        new(SettingsShell.MinimumWindowSize.Width, SettingsShell.MinimumWindowSize.Height + ReturnStripHeight);
 
     // Cached so lock/unlock toggling reuses them instead of allocating (and
     // leaking, since WinForms doesn't dispose a Font you overwrite) each time.
@@ -27,6 +47,7 @@ public sealed class MainForm : Form
     // assigned to a control's .Font, so shared statics avoid a per-form leak.
     private static readonly Font ToggleFont = new("Segoe UI", 14f, FontStyle.Bold);
     private static readonly Font ButtonFont = new("Segoe UI", 10f);
+    private static readonly Font ReturnFont = new("Segoe UI", 10.5f, FontStyle.Bold);
 
     private const string LockedText =
         "The keyboard is currently locked.";
@@ -34,7 +55,7 @@ public sealed class MainForm : Form
     /// <summary>The lock/unlock button was clicked; TrayAppContext decides what to do.</summary>
     public event Action? ToggleRequested;
 
-    /// <summary>The Settings button was clicked; TrayAppContext opens the settings window.</summary>
+    /// <summary>The Settings button was clicked; TrayAppContext opens the settings view.</summary>
     public event Action? SettingsRequested;
 
     /// <summary>Set on real exit so closing stops hiding to the tray.</summary>
@@ -50,10 +71,11 @@ public sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimizeBox = true;
         MaximizeBox = false;
-        ClientSize = UnlockedSize;
+        MinimumSize = SizeFromClientSize(MainViewMinimum);
+        ClientSize = ClampToScreen(_settings.MainWindowSize ?? MainViewSize, MainViewMinimum);
         BackColor = Color.FromArgb(245, 245, 245);
 
-        // --- Status label (fills the window) ---
+        // --- Status label (fills the main view) ---
         _status.Dock = DockStyle.Fill;
         _status.TextAlign = ContentAlignment.MiddleCenter;
         _status.Font = ActiveFont;
@@ -80,15 +102,21 @@ public sealed class MainForm : Form
         _settingsButton.Click += (_, _) => SettingsRequested?.Invoke();
 
         // --- Hotkey badge (bottom-left, right above the lock button) ---
-        _hotkeyBadge.Location = new Point(12, UnlockedSize.Height - _toggle.Height - _hotkeyBadge.Height - 10);
         _hotkeyBadge.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
         _tip.SetToolTip(_hotkeyBadge, "Global hotkey — locks and unlocks the keyboard");
         RefreshHotkey();
 
-        Controls.Add(_hotkeyBadge);      // low indexes = topmost, above the docked label
-        Controls.Add(_settingsButton);
-        Controls.Add(_status);           // Fill gets the space left over by the docked controls
-        Controls.Add(_toggle);
+        _mainView.Dock = DockStyle.Fill;
+        _mainView.Controls.Add(_hotkeyBadge);      // low indexes = topmost, above the docked label
+        _mainView.Controls.Add(_settingsButton);
+        _mainView.Controls.Add(_status);           // Fill gets the space left over by the docked controls
+        _mainView.Controls.Add(_toggle);
+        Controls.Add(_mainView);
+
+        // The view fills the client area, so its height is known now; the
+        // anchor keeps the badge riding the bottom edge from here on.
+        _hotkeyBadge.Location =
+            new Point(12, ClientSize.Height - _toggle.Height - _hotkeyBadge.Height - 10);
 
         FormClosing += OnFormClosing;
     }
@@ -98,41 +126,196 @@ public sealed class MainForm : Form
         if (!AllowClose && e.CloseReason == CloseReason.UserClosing && _settings.MinimizeToTrayOnClose)
         {
             e.Cancel = true;
+            // Leaving here — not remembering the view — is what makes "the next
+            // open always shows the main window" true by construction. It also
+            // ends the settings visit exactly where the old window-close did.
+            LeaveSettings();
             Hide();
         }
+        else
+        {
+            // A real close still has to end the visit, or a debounced edit made
+            // just before exiting would never reach disk.
+            LeaveSettings();
+        }
+    }
+
+    /// <summary>
+    /// Switches the window to the settings view, adopting the shell on first
+    /// call. The shell arrives constructed-hidden and stays alive for the app's
+    /// lifetime; per-visit semantics live in <see cref="SettingsShell.EndVisit"/>.
+    /// </summary>
+    internal void EnterSettings(SettingsShell shell)
+    {
+        AdoptShell(shell);
+        if (_inSettings) return;
+        _inSettings = true;
+
+        SuspendLayout();
+        // Minimum first: applying a ClientSize below the old minimum would be
+        // silently corrected against the wrong floor.
+        MinimumSize = SizeFromClientSize(SettingsViewMinimum);
+        ClientSize = ClampToScreen(_settings.SettingsWindowSize ?? SettingsViewSize, SettingsViewMinimum);
+        _mainView.Visible = false;
+        _settingsView!.Visible = true;
+        _shell!.Visible = true;
+        ResumeLayout();
+    }
+
+    /// <summary>
+    /// Back to the main view. Ends the settings visit (flush, sweeps). Safe to
+    /// call when already there — the close path calls it unconditionally.
+    /// </summary>
+    internal void LeaveSettings()
+    {
+        if (!_inSettings) return;
+        _inSettings = false;
+
+        _shell?.EndVisit();
+
+        SuspendLayout();
+        _settingsView!.Visible = false;
+        _mainView.Visible = true;
+        MinimumSize = SizeFromClientSize(MainViewMinimum);
+        ClientSize = ClampToScreen(_settings.MainWindowSize ?? MainViewSize, MainViewMinimum);
+        ResumeLayout();
+    }
+
+    private void AdoptShell(SettingsShell shell)
+    {
+        if (ReferenceEquals(_shell, shell)) return;
+
+        if (_settingsView is null) BuildSettingsView();
+        if (_shell is not null)
+        {
+            _shell.LeaveRequested -= LeaveSettings;
+            _settingsView!.Controls.Remove(_shell);
+        }
+
+        _shell = shell;
+        shell.Visible = false;   // shown by EnterSettings — a real transition,
+                                 // which the Statistics page's timer relies on
+        shell.Dock = DockStyle.Fill;
+        shell.LeaveRequested += LeaveSettings;
+        _settingsView!.Controls.Add(shell);
+        // Fill must sit in front of the Top-docked strip in the z-order, or the
+        // dock layout hands the strip's row to the shell too.
+        shell.BringToFront();
+    }
+
+    // The strip above the shell: the always-present way back to the main view,
+    // visible on every settings page and sub-page (the shell's own back button
+    // only walks sub-page → page).
+    private void BuildSettingsView()
+    {
+        _settingsView = new Panel { Dock = DockStyle.Fill, Visible = false };
+
+        var strip = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = ReturnStripHeight,
+            BackColor = Color.White,
+        };
+        // A hairline under the strip, so it reads as chrome rather than as the
+        // first row of the page.
+        strip.Paint += (_, e) =>
+        {
+            using var pen = new Pen(Color.FromArgb(225, 225, 225));
+            e.Graphics.DrawLine(pen, 0, strip.Height - 1, strip.Width, strip.Height - 1);
+        };
+
+        _returnButton = new SettingsShell.BackButton
+        {
+            Size = new Size(34, 34),
+            Location = new Point(12, (ReturnStripHeight - 34) / 2),
+        };
+        _returnButton.Click += (_, _) => LeaveSettings();
+
+        var label = new Label
+        {
+            Text = "CatFoil",
+            AutoSize = true,
+            Font = ReturnFont,
+            ForeColor = Color.FromArgb(40, 40, 44),
+            Location = new Point(54, (ReturnStripHeight - 20) / 2),
+            Cursor = Cursors.Hand,
+        };
+        label.Click += (_, _) => LeaveSettings();
+
+        strip.Controls.Add(_returnButton);
+        strip.Controls.Add(label);
+        _settingsView.Controls.Add(strip);
+        Controls.Add(_settingsView);
+        _settingsView.BringToFront();
+    }
+
+    /// <summary>
+    /// Stores the current size into the active view's slot. Called with a
+    /// Save() from the drag-end handler; probes call it alone, because Save()
+    /// writes the user's real settings.json.
+    /// </summary>
+    private void RecordViewSize()
+    {
+        if (WindowState != FormWindowState.Normal) return;
+        if (_inSettings) _settings.SettingsWindowSize = ClientSize;
+        else _settings.MainWindowSize = ClientSize;
+    }
+
+    protected override void OnResizeEnd(EventArgs e)
+    {
+        base.OnResizeEnd(e);
+        // Fires after moves too (same WM_EXITSIZEMOVE), so skip the disk write
+        // when the size the active view remembers is already this one.
+        Size? recorded = _inSettings ? _settings.SettingsWindowSize : _settings.MainWindowSize;
+        if (recorded == ClientSize) return;
+        RecordViewSize();
+        _settings.Save();
+    }
+
+    // settings.json is hand-editable, so a stored size can be absurd: floor it
+    // at the view's minimum and cap it to the screen it will appear on.
+    private Size ClampToScreen(Size wanted, Size minimum)
+    {
+        Rectangle area = Screen.FromControl(this).WorkingArea;
+        return new Size(
+            Math.Clamp(wanted.Width, minimum.Width, Math.Max(minimum.Width, area.Width)),
+            Math.Clamp(wanted.Height, minimum.Height, Math.Max(minimum.Height, area.Height)));
+    }
+
+    // Escape is a settings gesture: the shell's own ProcessCmdKey catches it
+    // while focus is inside the shell; this covers focus resting on the form.
+    // In the main view Escape means nothing.
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (_inSettings && keyData == Keys.Escape && _shell is not null)
+            return _shell.HandleEscape();
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     public void SetLockedUi(bool locked)
     {
+        // The lock screen IS the main view — snapping back also keeps the two
+        // views' sizes from fighting, since this no longer resizes anything.
+        if (locked) LeaveSettings();
+
         _locked = locked;
         if (locked)
         {
-            SuspendLayout();
-            ClientSize = LockedSize;
-            CenterToScreen();
-
             Text = "CatFoil — keyboard locked";
 
             _status.Font = LockedFont;
             _status.ForeColor = Color.FromArgb(60, 60, 60);
             _status.Text = LockedText;
             _toggle.Text = "Unlock Keyboard";
-            ResumeLayout();
         }
         else
         {
-            SuspendLayout();
-            BackColor = Color.FromArgb(245, 245, 245);
-            ClientSize = UnlockedSize;
-            CenterToScreen();
-
             Text = "CatFoil";
 
             _status.Font = ActiveFont;
             _status.ForeColor = Color.FromArgb(0, 130, 0);
             _status.Text = "Keyboard is unlocked.";
             _toggle.Text = "Lock Keyboard";
-            ResumeLayout();
         }
     }
 

@@ -43,6 +43,14 @@ public sealed class Settings
     public bool StartMinimized { get; set; }
     public bool ShowOverlay { get; set; } = true;
 
+    // The main window's two views are different sizes, and each remembers what
+    // the user stretched it to (recorded on drag-end, null until then). Clamped
+    // where they are applied, not here — settings.json is hand-editable text.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Size? MainWindowSize { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Size? SettingsWindowSize { get; set; }
+
     // Optional audio cues. Each event is independent so "tell me when it locks"
     // doesn't force "tell me when it unlocks" too.
     public SoundSetting LockSound { get; set; } = new();

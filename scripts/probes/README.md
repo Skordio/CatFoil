@@ -83,6 +83,7 @@ a stranded one can never block the next run.
 | `probe-unlock-cue` | Combo/chord keys are swallowed silently; everything else still cues |
 | `probe-no-chord` | Chord option gone from the UI; engine dormant, stored data kept |
 | `probe-restore-ui` | Elevation relaunch re-opens the windows that were up |
+| `probe-single-window` | Settings inside the main window: view switch, return button, Escape, per-view sizes |
 
 `probe-render` compares against `artifacts\probes\render\*.bin`. Capture a new
 baseline with `-Mode baseline` **before** a change you intend to be invisible,

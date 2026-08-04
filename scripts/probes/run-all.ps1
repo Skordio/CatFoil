@@ -28,6 +28,7 @@ $probes = @(
   'probe-unlock-cue'      # unlock-gesture keys don't fire the blocked-key cue
   'probe-no-chord'        # chord option gone from the UI; engine dormant, data kept
   'probe-restore-ui'      # elevation relaunch re-opens the windows that were up
+  'probe-single-window'   # settings inside the main window; per-view size persistence
 )
 
 $failed = @()
