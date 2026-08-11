@@ -28,6 +28,11 @@ internal static class IconStore
 
     private static readonly string[] AllowedExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".bmp" };
 
+    /// <summary>The file picker's filter, built from <see cref="AllowedExtensions"/>
+    /// so the dialog can never drift from what <see cref="Import"/> accepts.</summary>
+    public static string PickerFilter =>
+        "Images|" + string.Join(";", AllowedExtensions.Select(e => "*" + e)) + "|All files|*.*";
+
     // 0.3 and earlier copied images to two fixed names in the CatFoil folder
     // itself. Those are stored relative the same way, so they still resolve and
     // nothing has to be moved on upgrade — but once nothing refers to them they

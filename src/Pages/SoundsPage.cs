@@ -156,7 +156,7 @@ internal sealed class SoundsPage : SettingsPage
         using var dlg = new OpenFileDialog
         {
             Title = "Choose a sound",
-            Filter = "Audio|*.mp3;*.wav;*.wma;*.m4a;*.aac|All files|*.*",
+            Filter = SoundStore.PickerFilter,
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 

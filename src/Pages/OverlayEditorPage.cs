@@ -499,7 +499,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         using var dlg = new OpenFileDialog
         {
             Title = "Choose an overlay image",
-            Filter = "Images|*.png;*.ico;*.jpg;*.jpeg;*.bmp|All files|*.*",
+            Filter = IconStore.PickerFilter,
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 

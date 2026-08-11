@@ -20,7 +20,12 @@ internal static class SoundStore
     /// actually decode a file, so this is a filter rather than a guarantee —
     /// an unplayable file falls back to the Windows scheme sound.
     /// </summary>
-    public static readonly string[] AllowedExtensions = { ".mp3", ".wav", ".wma", ".m4a", ".aac" };
+    private static readonly string[] AllowedExtensions = { ".mp3", ".wav", ".wma", ".m4a", ".aac" };
+
+    /// <summary>The file picker's filter, built from <see cref="AllowedExtensions"/>
+    /// so the dialog can never drift from what <see cref="Import"/> accepts.</summary>
+    public static string PickerFilter =>
+        "Audio|" + string.Join(";", AllowedExtensions.Select(e => "*" + e)) + "|All files|*.*";
 
     private static string Folder => Path.Combine(Settings.Directory, FolderName);
 
