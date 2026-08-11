@@ -50,6 +50,7 @@ public sealed class TrayAppContext : ApplicationContext
     // edit that touches neither doesn't redo them. See ApplyLiveEdit.
     private (Keys, bool) _appliedHotkeyState;
     private (bool, bool) _appliedStartupState;
+    private (bool, (string, OverlayAppearance, OverlayShowIn, bool)[]) _appliedOverlayState;
 
     public TrayAppContext(EventWaitHandle showEvent)
     {
@@ -92,6 +93,7 @@ public sealed class TrayAppContext : ApplicationContext
         // Seed the baselines ApplyLiveEdit compares against.
         _appliedHotkeyState = HotkeyState();
         _appliedStartupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);
+        _appliedOverlayState = OverlayState();
 
         _timedTimer.Tick += (_, _) => TimedTick();
 
@@ -494,12 +496,34 @@ public sealed class TrayAppContext : ApplicationContext
             ApplyStartupSettings();
         }
 
-        SyncOverlays();
+        // Same idea for the overlays: a full SyncOverlays walks the migration
+        // path and pushes an appearance to every badge, which is real work to
+        // do per Scroll tick of, say, a sound-volume slider that cannot touch
+        // an overlay. Appearance compares by reference on purpose — edits
+        // replace the object rather than mutating it (OverlayEditorPage.Edit).
+        var overlayState = OverlayState();
+        if (overlayState.Item1 != _appliedOverlayState.Item1
+            || !overlayState.Item2.SequenceEqual(_appliedOverlayState.Item2))
+        {
+            _appliedOverlayState = overlayState;
+            SyncOverlays();
+        }
+
         ApplyIdleTimer();
     }
 
     // Everything ApplyHotkeySettings reads, as a comparable value.
     private (Keys, bool) HotkeyState() => (_settings.Hotkey, _settings.HotkeyEnabled);
+
+    // Everything SyncOverlays' outcome depends on, as a comparable snapshot.
+    // A field read by SyncOverlays/ApplyOverlayActivation but missing here
+    // means an edit to it silently never reaches the screen — extend this
+    // tuple in the same change that adds such a field.
+    private (bool, (string, OverlayAppearance, OverlayShowIn, bool)[]) OverlayState() =>
+        (_settings.ShowOverlay,
+         _settings.EnsureOverlays()
+             .Select(item => (item.Id, item.Appearance, item.ShowIn, item.Enabled))
+             .ToArray());
 
     /// <summary>
     /// Stop and resume listening for the hotkey while the settings window binds
