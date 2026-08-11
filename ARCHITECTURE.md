@@ -19,8 +19,9 @@ together. It is a reference for understanding the app end-to-end.
 | App shell | `src/TrayAppContext.cs` | An `ApplicationContext` (no main form owns the lifetime). Owns the tray icon, keyboard hook, hotkey, overlay, timers, and the lazily-created windows. |
 | Shutdown | `TrayAppContext.ExitApp` | Unlocks if locked, detaches watchdog/SystemEvents, hides tray, disposes hook/hotkey, closes overlay and main form, `ExitThread()`. |
 
-The app is **tray-first**: closing the main window hides it to the tray (unless
-"Hide to tray on close" is off); the process keeps running until Exit is chosen.
+The app is **tray-first**: closing the main window hides it to the tray and the
+process keeps running until Exit is chosen — unless "Hide to tray on close" is
+off, in which case closing the window quits CatFoil.
 
 ---
 
@@ -61,10 +62,13 @@ Persistent controls (main view):
   when the hotkey is disabled.
 
 Behaviors:
-- **Close-to-tray**: `FormClosing` cancels a user close and hides, unless
-  `AllowClose` is set (real exit) or the tray-on-close setting is off. Either
-  way the close path first calls `LeaveSettings()` — that is what makes "the
-  next open always shows the main view" true by construction, ends the settings
+- **Close-to-tray**: `FormClosing` cancels every user close. With the
+  tray-on-close setting on it hides; with it off it raises `ExitRequested`
+  (deferred via `BeginInvoke`) and `TrayAppContext.ExitApp` runs the real
+  shutdown — the form is never disposed while the tray lives, which used to
+  leave every later tray action throwing `ObjectDisposedException`. Either way
+  the close path first calls `LeaveSettings()` — that is what makes "the next
+  open always shows the main view" true by construction, ends the settings
   visit (flush + sweeps) exactly where the old settings-window close did, and
   on a real exit flushes any debounced edit. Minimize is NOT close: the view
   survives a minimize/restore.

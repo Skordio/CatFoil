@@ -64,6 +64,7 @@ public sealed class TrayAppContext : ApplicationContext
         _ = _mainForm.Handle;   // create the handle now so BeginInvoke works before the first Show
         _mainForm.ToggleRequested += ToggleLock;
         _mainForm.SettingsRequested += ShowSettings;
+        _mainForm.ExitRequested += ExitApp;
 
         SyncOverlays();
 

@@ -58,6 +58,10 @@ public sealed class MainForm : Form
     /// <summary>The Settings button was clicked; TrayAppContext opens the settings view.</summary>
     public event Action? SettingsRequested;
 
+    /// <summary>The user closed the window with "Hide to tray on close" off,
+    /// which means quitting CatFoil; TrayAppContext runs the real shutdown.</summary>
+    public event Action? ExitRequested;
+
     /// <summary>Set on real exit so closing stops hiding to the tray.</summary>
     public bool AllowClose { get; set; }
 
@@ -123,14 +127,26 @@ public sealed class MainForm : Form
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
     {
-        if (!AllowClose && e.CloseReason == CloseReason.UserClosing && _settings.MinimizeToTrayOnClose)
+        if (!AllowClose && e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
             // Leaving here — not remembering the view — is what makes "the next
             // open always shows the main window" true by construction. It also
             // ends the settings visit exactly where the old window-close did.
             LeaveSettings();
-            Hide();
+            if (_settings.MinimizeToTrayOnClose)
+            {
+                Hide();
+            }
+            else
+            {
+                // With hide-to-tray off, closing the only window means quitting.
+                // Letting the close proceed instead would dispose this form while
+                // the tray lived on — every later tray action (and the hook's
+                // BeginInvoke on a blocked key) then threw ObjectDisposedException.
+                // Deferred so the closing event fully unwinds before shutdown.
+                BeginInvoke(() => ExitRequested?.Invoke());
+            }
         }
         else
         {
