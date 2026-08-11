@@ -191,8 +191,13 @@ public sealed class TrayAppContext : ApplicationContext
             _lockStartTick = Environment.TickCount;
             _settings.StatLockSessions++;
             _settings.Save();
-            Sounds.Lock(_settings);
+            // The lock screen before the cue: SetLockedUi snaps out of the
+            // settings view, and leaving settings ends the visit — whose
+            // cleanup closes every MCI alias. Started first, a custom lock
+            // cue would be silenced milliseconds in whenever the user locks
+            // from inside settings.
             _mainForm.SetLockedUi(true);
+            Sounds.Lock(_settings);
             ApplyOverlayActivation();
             _tray.Text = "CatFoil — KEYBOARD LOCKED";
             _lockMenuItem.Text = "Unlock Keyboard";
