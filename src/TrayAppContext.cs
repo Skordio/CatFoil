@@ -90,6 +90,29 @@ public sealed class TrayAppContext : ApplicationContext
         // strands it. Repairing needs elevation — which that very task hands us
         // at logon — and spawns schtasks, so it stays off the startup path.
         System.Threading.Tasks.Task.Run(Startup.RepairTaskSecurity);
+        // If the elevated logon task has vanished while its setting stayed true,
+        // no autostart runs at all: the stale flag suppresses the Run key too,
+        // and Startup.Apply trusts the flag. Reconcile once at startup —
+        // off-thread, because TaskExists spawns schtasks.exe. (AdvancedPage
+        // self-heals the same way, but only if the user happens to visit it.)
+        if (_settings.StartElevatedOnBoot)
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                if (Startup.TaskExists()) return;
+                try
+                {
+                    _mainForm.BeginInvoke(() =>
+                    {
+                        _settings.StartElevatedOnBoot = false;
+                        _settings.Save();
+                        _appliedStartupState = (_settings.StartWithWindows, false);
+                        ApplyStartupSettings();
+                    });
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+            });
+        }
         // Seed the baselines ApplyLiveEdit compares against.
         _appliedHotkeyState = HotkeyState();
         _appliedStartupState = (_settings.StartWithWindows, _settings.StartElevatedOnBoot);

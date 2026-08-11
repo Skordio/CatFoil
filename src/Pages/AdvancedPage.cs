@@ -65,7 +65,23 @@ internal sealed class AdvancedPage : SettingsPage
             .ContinueWith(t =>
             {
                 if (IsDisposed || !IsHandleCreated) return;
-                try { BeginInvoke(() => SetElevatedBootChecked(t.Result)); }
+                try
+                {
+                    BeginInvoke(() =>
+                    {
+                        // Self-heal a stale flag: the task can vanish out from
+                        // under the setting (an uninstall of another copy, GPO,
+                        // hand-deletion). Left true it also suppresses the HKCU
+                        // Run autostart, so CatFoil silently never starts at
+                        // logon — and unelevated, this checkbox is disabled, so
+                        // the UI offers no way to clear it. Clearing through
+                        // the session re-runs Startup.Apply, restoring the Run
+                        // key if "Start with Windows" is on.
+                        if (!t.Result && Settings.StartElevatedOnBoot)
+                            Session.Apply(s => s.StartElevatedOnBoot = false);
+                        SetElevatedBootChecked(t.Result);
+                    });
+                }
                 catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
             }, System.Threading.Tasks.TaskScheduler.Default);
     }
