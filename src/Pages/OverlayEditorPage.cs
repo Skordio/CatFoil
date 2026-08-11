@@ -108,6 +108,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         {
             Control gone = _body.Controls[i];
             _body.Controls.RemoveAt(i);
+            DisposeOwnedImages(gone);
             gone.Dispose();
         }
 
@@ -295,6 +296,19 @@ internal sealed class OverlayEditorPage : SettingsPage
 
         _body.ResumeLayout();
         RefreshPreview();
+    }
+
+    // IconGallery.Render hands each gallery button a bitmap this page owns,
+    // and WinForms never disposes Control.Image — without this, every icon
+    // colour pick (a full body rebuild) abandoned ten GDI bitmaps to the GC.
+    private static void DisposeOwnedImages(Control root)
+    {
+        foreach (Control child in root.Controls) DisposeOwnedImages(child);
+        if (root is Button { Image: { } image } button)
+        {
+            button.Image = null;
+            image.Dispose();
+        }
     }
 
     private static readonly Color DefaultBackground = Color.FromArgb(45, 45, 48);
@@ -548,6 +562,7 @@ internal sealed class OverlayEditorPage : SettingsPage
         if (disposing)
         {
             _flash.Dispose();
+            DisposeOwnedImages(_body);   // base disposes the controls, never their images
             if (_previewIcon is not null && _previewIcon != _defaultIcon) _previewIcon.Dispose();
             _defaultIcon?.Dispose();
         }
