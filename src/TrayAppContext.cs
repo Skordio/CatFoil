@@ -393,6 +393,13 @@ public sealed class TrayAppContext : ApplicationContext
     // ---------------------------------------------------------------
     private void ShowMainWindow()
     {
+        // While locked, bringing the window back must show the unlock button:
+        // this is the blocked-key failsafe's whole premise, and the tray's
+        // Open/double-click used to guarantee it too. The user can have
+        // re-entered settings after locking (allowed — the mouse is alive), so
+        // snap back; ShowSettings re-enters right after this for an explicit
+        // "Settings…" click, which keeps that path working while locked.
+        if (_hook.IsLocked) _mainForm.LeaveSettings();
         _mainForm.Show();
         if (_mainForm.WindowState == FormWindowState.Minimized)
             _mainForm.WindowState = FormWindowState.Normal;
