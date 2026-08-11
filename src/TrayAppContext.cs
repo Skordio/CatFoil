@@ -509,12 +509,26 @@ public sealed class TrayAppContext : ApplicationContext
     /// </summary>
     private void OnHotkeyCaptureChanged(bool capturing)
     {
+        // Dedup: once the Locking page has hooked the main window's activation,
+        // every Deactivate re-announces "not capturing" — for the life of the
+        // process, since the one-window change made that form permanent. Without
+        // this, every Alt+Tab away from CatFoil tore down and re-registered the
+        // global hotkey, with a silent window where another app could claim it.
+        if (capturing == _hotkeyCapture) return;
         _hotkeyCapture = capturing;
         ApplyHotkeySettings(announceFailure: false);
     }
 
     private void ApplyHotkeySettings(bool announceFailure = true)
     {
+        // No chord branch here anymore: the option is pulled (see Settings),
+        // so the hook's chord engine is never armed and RegisterHotKey is
+        // always the lock trigger. Assigned above the capture guard so the
+        // hook's in-lock unlock trigger always tracks settings — the guard
+        // only suspends RegisterHotKey, and leaving the hook on a stale combo
+        // would strand any future locked-while-capturing state.
+        _hook.UnlockCombo = _settings.HotkeyEnabled ? _settings.Hotkey : Keys.None;
+
         // Binding a new hotkey: nothing should be listening. Guarding here
         // rather than at the call sites covers the watchdog and the settings
         // window's live-apply, which both land in here every few seconds.
@@ -524,10 +538,6 @@ public sealed class TrayAppContext : ApplicationContext
             return;
         }
 
-        // No chord branch here anymore: the option is pulled (see Settings),
-        // so the hook's chord engine is never armed and RegisterHotKey is
-        // always the lock trigger.
-        _hook.UnlockCombo = _settings.HotkeyEnabled ? _settings.Hotkey : Keys.None;
         if (_settings.HotkeyEnabled)
         {
             if (!_hotkey.Register(_settings.Hotkey) && announceFailure)
