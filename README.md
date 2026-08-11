@@ -9,7 +9,7 @@ Foil your cat. CatFoil is a small Windows tray utility that locks your keyboard 
 - **On-screen cat overlay** while locked: a small draggable badge that reminds you the keyboard is off. Hover it for an explanation, click it to open CatFoil. By default it stays out of the way of fullscreen apps (videos, games) and reappears afterwards — or you can have it show only over fullscreen apps, or always.
 - **Blocked-key feedback**: pressing a key while locked flashes the overlay badge red, and restores the main window if you'd otherwise have no way back in.
 - **Timed lock** ("Lock for…" in the tray menu) that auto-unlocks after 5/15/30/60 minutes, and optional **auto-lock** after a stretch of no keyboard or mouse activity.
-- **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, overlay appearance, auto-lock, hide-to-tray, start hidden, and start with Windows (a registry Run entry the app manages itself).
+- **Settings** (saved to `%APPDATA%\CatFoil\settings.json`): hotkey, multiple on-screen overlay badges with per-badge appearance, sound cues (system or your own audio), auto-lock, lock statistics, hide-to-tray, start hidden, and start with Windows (a registry Run entry the app manages itself).
 - **Two ways to get it**: a **portable** single-file EXE that runs with no install, or a **one-click installer** (per-user with no admin, or all-users) that adds a Start-menu shortcut and an uninstaller. Either way your settings live in `%APPDATA%`, so switching formats, upgrading, or reinstalling keeps everything.
 
 ## Installing

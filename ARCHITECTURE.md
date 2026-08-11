@@ -129,7 +129,7 @@ Pages:
 - **Sounds** — three **independent** cues (locking · unlocking · a key blocked
   while locked), each with its own source, volume and **Test** button. A cue is
   either one of the user's Windows scheme sounds (tooltip points at the Windows
-  sound settings if those events are "(None)") or a file of their own (§5.4).
+  sound settings if those events are "(None)") or a file of their own (§5.5).
   Volume applies only to a custom file — a scheme sound plays at whatever the
   system mixer says — so it greys out when the Windows sound is selected. The
   blocked cue is still throttled so a held key can't machine-gun it.
@@ -155,7 +155,7 @@ as `SettingsSaved`, so the tray applies it live), and schedules the disk write o
 a 500 ms debounce so dragging a spinner doesn't write settings.json per tick.
 `Flush()` forces the pending write — called on form close and before an elevated
 relaunch hands off. Closing the window also sweeps unreferenced overlay images
-and cue audio (`IconStore`/`SoundStore.CollectGarbage`, §5.3/§5.4). That is
+and cue audio (`IconStore`/`SoundStore.CollectGarbage`, §5.3/§5.5). That is
 deferred to here rather than done when an item is removed, so removing one and
 changing your mind inside the same visit doesn't cost you the file.
 
@@ -428,6 +428,8 @@ ever considers files in the `icons` folder plus the two fixed names 0.3 used
 is a deletion candidate. Legacy paths still resolve unchanged, so upgrading moves
 no files.
 
+### 5.4 Startup registrations & the elevated logon task — `src/Startup.cs`
+
 Startup is managed by `src/Startup.cs`: "Start with Windows" is an
 `HKCU\...\Run\CatFoil` value (non-elevated), re-applied on every launch and save;
 "Start elevated at logon" (`StartElevatedOnBoot`) is instead a Task Scheduler task
@@ -468,7 +470,7 @@ leaving one that needs elevation to remove:
   outright.
 
 
-### 5.4 Audio cues — `src/Sounds.cs`, `src/AudioPlayer.cs`, `src/SoundStore.cs`
+### 5.5 Audio cues — `src/Sounds.cs`, `src/AudioPlayer.cs`, `src/SoundStore.cs`
 
 `Settings` holds three `SoundSetting`s (`LockSound` / `UnlockSound` /
 `BlockedSound`): Enabled · Source (System / Custom) · File · Volume. 0.3 had two
@@ -508,7 +510,8 @@ ends.
 - Optional **auto-lock after inactivity** (idle for N minutes, mouse activity resets it).
 - **Timed lock** ("Lock for…" tray submenu) with an auto-unlock countdown.
 - **Lifetime statistics** — lock sessions, total locked time, and blocked-key count.
-- Optional **sound cues** on lock/unlock and blocked keys (Windows system sounds).
+- Three independent, optional **sound cues** — lock, unlock, and blocked key — each a
+  Windows system sound or the user's own audio file, with per-cue volume.
 - Single-instance; second launch resurfaces the running one.
 
 ---
@@ -586,14 +589,14 @@ artifact destined for the Microsoft Store; the portable is a GitHub-Releases-onl
   starts CatFoil as the normal user. On uninstall, an `[UninstallRun]` entry runs the
   still-installed EXE with `--uninstall-cleanup` (before file removal) so the runtime-created
   startup registrations — the HKCU `Run` value and the elevated scheduled task — don't survive
-  as orphans firing against a deleted EXE (path-guarded; see §5). Known limitation: a
+  as orphans firing against a deleted EXE (path-guarded; see §5.4). Known limitation: a
   per-machine uninstall run by a *different* admin account can't reach the original user's
   HKCU/task.
 
 The build scripts share `scripts/_common.ps1` (publish, version, locate ISCC), and
 `scripts/build-release.ps1` — the per-release command — publishes **once** and emits both the
 portable EXE and the installer, so the two are byte-for-byte the same binary and can never
-drift. The version comes from `<Version>` in `CatFoil.csproj` (currently `0.4.0`) so the EXE
+drift. The version comes from `<Version>` in `CatFoil.csproj` (currently `0.6.0`) so the EXE
 metadata and every artifact filename always match. The installer is **offline** (payload
 bundled) and **silent-capable** (`/VERYSILENT`), which are the two hard requirements for the
 Microsoft Store's **MSI/EXE submission path** — so the same installer can be listed on the
