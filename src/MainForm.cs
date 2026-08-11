@@ -176,6 +176,22 @@ public sealed class MainForm : Form
         _settingsView!.Visible = true;
         _shell!.Visible = true;
         ResumeLayout();
+        // The settings view is much larger than the main view, and growing in
+        // place anchors at the old top-left — from a corner, the nav rows and
+        // the bottom of the page would hang off the screen with nothing to say
+        // so. (The old SettingsForm was CenterScreen and never had the problem.)
+        KeepOnScreen();
+    }
+
+    // Shifts the window back inside the work area of whichever screen it is on.
+    // Size is already clamped to fit (ClampToScreen), so position alone decides.
+    private void KeepOnScreen()
+    {
+        if (WindowState != FormWindowState.Normal) return;
+        Rectangle area = Screen.FromControl(this).WorkingArea;
+        int x = Math.Min(Bounds.Right, area.Right) - Width;
+        int y = Math.Min(Bounds.Bottom, area.Bottom) - Height;
+        Location = new Point(Math.Max(x, area.Left), Math.Max(y, area.Top));
     }
 
     /// <summary>
